@@ -127,12 +127,34 @@ done
 #    this interactive path — it overrides/clobbers the app.yaml scopes (using a
 #    different scope vocabulary, e.g. serving.serving-endpoints ≠ model-serving)
 #    and the agent then 403s "required scopes: model-serving".
+# The app.yaml env uses `valueFrom: sql-warehouse`, which requires an app
+# resource named `sql-warehouse` to be BOUND — bind it in the create payload so
+# it's present from the start (binding it after-the-fact via `apps update` races
+# with `apps deploy` and can get dropped). DATABRICKS_WAREHOUSE_ID drives both
+# analytics queries and the boot-time Delta->Lakebase sync. Lakebase itself is
+# Autoscale here (no classic `postgres` resource) — it connects via the plain
+# LAKEBASE_ENDPOINT/PG* env in app.yaml, not a resource binding.
+APP_CREATE_JSON="$(python3 -c "
+import json, os
+print(json.dumps({
+    'name': os.environ['APP_NAME'],
+    'resources': [{
+        'name': 'sql-warehouse',
+        'description': 'Serverless warehouse for analytics + boot sync',
+        'sql_warehouse': {'id': os.environ['DATABRICKS_WAREHOUSE_ID'], 'permission': 'CAN_USE'},
+    }],
+}))
+")"
 if ! databricks apps get "$APP_NAME" ${PROFILE_FLAG[@]+"${PROFILE_FLAG[@]}"} >/dev/null 2>&1; then
-    echo "[deploy] creating app $APP_NAME"
-    if ! err="$(databricks apps create "$APP_NAME" ${PROFILE_FLAG[@]+"${PROFILE_FLAG[@]}"} 2>&1 1>/dev/null)"; then
+    echo "[deploy] creating app $APP_NAME (with sql-warehouse resource)"
+    if ! err="$(databricks apps create --json "$APP_CREATE_JSON" ${PROFILE_FLAG[@]+"${PROFILE_FLAG[@]}"} 2>&1 1>/dev/null)"; then
         explain_apps_error create "$err"
         exit 1
     fi
+else
+    # App exists — ensure the warehouse resource is bound (idempotent).
+    echo "[deploy] ensuring sql-warehouse resource is bound"
+    databricks apps update "$APP_NAME" --json "$APP_CREATE_JSON" ${PROFILE_FLAG[@]+"${PROFILE_FLAG[@]}"} >/dev/null 2>&1 || true
 fi
 
 # 3) Deploy the uploaded source.
