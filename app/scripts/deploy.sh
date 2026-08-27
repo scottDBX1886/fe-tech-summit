@@ -109,6 +109,17 @@ if ! err="$(databricks workspace import-dir . "$WS_PATH" ${PROFILE_FLAG[@]+"${PR
     exit 1
 fi
 
+# import-dir has no exclude flag, so it also uploads local-only dotfiles. The
+# container's start command is `node --env-file-if-exists=.env`, so a shipped
+# .env would load LOCAL config (DATABRICKS_HOST, PG*) ON TOP of the platform's
+# injected SP OAuth creds — which breaks the auth resolver ("more than one
+# authorization method configured: oauth and pat") and MLflow trace export.
+# All deployed config comes from app.yaml env + resource bindings, so purge the
+# local-only env files from the uploaded source.
+for f in .env .env.example; do
+    databricks workspace delete "$WS_PATH/$f" ${PROFILE_FLAG[@]+"${PROFILE_FLAG[@]}"} 2>/dev/null || true
+done
+
 # 2) Create the App resource if missing. Scopes are NOT set here — the app's
 #    OBO scopes come from `app.yaml`'s `user_authorization.scopes` (incl.
 #    `model-serving`), which `databricks apps deploy` (step 3) applies from the
