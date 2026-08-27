@@ -218,6 +218,12 @@ EXCEPTION WHEN OTHERS THEN
   RAISE NOTICE 'could not self-grant SP role membership (%): ownership transfer may skip', SQLERRM;
 END \$\$;
 
+-- Each ALTER is individually guarded: transferring ownership requires the
+-- connecting user to be a MEMBER of the SP role, which the managed Lakebase
+-- role model may not permit. When it can't, we degrade to a NOTICE rather than
+-- abort the grant (ON_ERROR_STOP=1). The primary fix for the cache table is to
+-- DROP the empty stale table so the SP recreates + owns it on boot; this block
+-- is a best-effort belt-and-suspenders for any other user-owned leftovers.
 DO \$\$
 DECLARE r record;
 BEGIN
@@ -228,17 +234,25 @@ BEGIN
       AND c.relkind IN ('r','S','v','m','p')
       AND pg_get_userbyid(c.relowner) = current_user
   LOOP
-    EXECUTE format('ALTER %s %I.%I OWNER TO %I',
-      CASE r.relkind WHEN 'S' THEN 'SEQUENCE' WHEN 'v' THEN 'VIEW'
-                     WHEN 'm' THEN 'MATERIALIZED VIEW' ELSE 'TABLE' END,
-      r.nspname, r.relname, '$SP_ROLE');
+    BEGIN
+      EXECUTE format('ALTER %s %I.%I OWNER TO %I',
+        CASE r.relkind WHEN 'S' THEN 'SEQUENCE' WHEN 'v' THEN 'VIEW'
+                       WHEN 'm' THEN 'MATERIALIZED VIEW' ELSE 'TABLE' END,
+        r.nspname, r.relname, '$SP_ROLE');
+    EXCEPTION WHEN OTHERS THEN
+      RAISE NOTICE 'skip owner transfer of %.% (%)', r.nspname, r.relname, SQLERRM;
+    END;
   END LOOP;
   FOR r IN
     SELECT nspname FROM pg_namespace
     WHERE nspname IN ('app','appkit','drizzle')
       AND pg_get_userbyid(nspowner) = current_user
   LOOP
-    EXECUTE format('ALTER SCHEMA %I OWNER TO %I', r.nspname, '$SP_ROLE');
+    BEGIN
+      EXECUTE format('ALTER SCHEMA %I OWNER TO %I', r.nspname, '$SP_ROLE');
+    EXCEPTION WHEN OTHERS THEN
+      RAISE NOTICE 'skip owner transfer of schema % (%)', r.nspname, SQLERRM;
+    END;
   END LOOP;
 END \$\$;
 EOF
