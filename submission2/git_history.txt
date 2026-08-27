@@ -1,5 +1,7 @@
-* 323f8ab (HEAD -> dev) Fix dashboard embed + add Lakebase Search evidence asset
-* cc8f55d (origin/dev) Build 2 evidence: refresh submission2 with Lakebase Search retrieval
+* fc1da38 (HEAD -> dev) Build 2 evidence: executed notebook proving Lakebase Search retrieval RAN
+* b3f6e31 (origin/dev) Build 2 evidence: add lakebase_search_evidence.json + refresh git history/zip
+* 323f8ab Fix dashboard embed + add Lakebase Search evidence asset
+* cc8f55d Build 2 evidence: refresh submission2 with Lakebase Search retrieval
 * c628618 Layer 2 (Assist): retrieve memo grounding from the Build-1 Lakebase Search index
 * 88f3fa0 Build 2 evidence: submission2 bundle (all 7 required exports)
 * acfca3f Layer 0 (scaffold): bind sql-warehouse resource at app-create time
