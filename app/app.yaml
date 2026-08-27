@@ -32,15 +32,37 @@ env:
   - name: NODE_ENV
     value: production
 
-  # ── Binding-derived ─────────────────────────────────────────────────
-  # AppKit's ResourceRegistry expects DATABRICKS_WAREHOUSE_ID and the
-  # standard PG* vars from the postgres binding (PGHOST/PGDATABASE/PGUSER
-  # /PGPORT/PGSSLMODE are auto-injected by the platform).
+  # ── Warehouse (bound resource) ───────────────────────────────────────
+  # DATABRICKS_WAREHOUSE_ID comes from the `sql-warehouse` app resource
+  # binding (databricks apps update --resources / DAB apps.<key>.resources).
   - name: DATABRICKS_WAREHOUSE_ID
     valueFrom: sql-warehouse
-  - name: LAKEBASE_ENDPOINT
-    valueFrom: postgres
-  # Mirror DATABRICKS_WAREHOUSE_ID into WAREHOUSE_ID for config/app.json
-  # placeholder resolution.
+  # Mirror into WAREHOUSE_ID for config/app.json placeholder resolution.
   - name: WAREHOUSE_ID
     valueFrom: sql-warehouse
+
+  # ── Lakebase (Autoscale — plain env, NOT a resource binding) ─────────
+  # This workspace runs Autoscale Lakebase (projects/branches/endpoints), not
+  # a classic instance, so there is no `postgres` app-resource to bind. The
+  # AppKit lakebase plugin connects via these env vars directly + OAuth
+  # (generateDatabaseCredential). PGPORT/PGSSLMODE are also set here since the
+  # platform only auto-injects PG* for a classic postgres binding.
+  - name: LAKEBASE_ENDPOINT
+    value: projects/sentinel-payments/branches/production/endpoints/primary
+  - name: PGHOST
+    value: ep-wandering-boat-d83925kg.database.us-east-2.cloud.databricks.com
+  - name: PGDATABASE
+    value: databricks_postgres
+  - name: PGPORT
+    value: "5432"
+  - name: PGSSLMODE
+    value: require
+
+  # ── Governed data + Genie (normally injected by finalize_app.sh from the
+  # setup job's export_resources; set here for the direct-deploy path). ──
+  - name: DEMO_CATALOG
+    value: serverless_scottj_techsummit_catalog
+  - name: DEMO_SCHEMA
+    value: sent_benefits
+  - name: GENIE_SPACE_ID
+    value: 01f1a23080a2179688ecae418471b534
