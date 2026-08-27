@@ -140,10 +140,13 @@ APP_SPEC_JSON="$(python3 -c "
 import json, os
 print(json.dumps({
     'name': os.environ['APP_NAME'],
+    # NOTE: iam.access-control:read / iam.current-user:read are auto-granted by
+    # the platform and are NOT settable here (apps update rejects them:
+    # \"not a valid scope\"). List only the app-requested scopes; iam.* show up
+    # in effective_user_api_scopes automatically.
     'user_api_scopes': [
         'model-serving', 'genie', 'sql', 'postgres', 'ai-gateway',
         'catalog.catalogs:read', 'catalog.schemas:read', 'catalog.tables:read',
-        'iam.access-control:read', 'iam.current-user:read',
     ],
     'resources': [{
         'name': 'sql-warehouse',
