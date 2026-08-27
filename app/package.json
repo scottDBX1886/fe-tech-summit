@@ -16,7 +16,7 @@
     "format": "prettier --write .",
     "prebuild": "npm run sync && npm run db:generate",
     "build:source": "tsdown --config tsdown.server.config.ts && vite build --config client/vite.config.ts",
-    "build": "npm run build:source"
+    "build": "echo '[build] no-op — dist/ + client/dist/ are built locally by scripts/build-app.sh and shipped with the source (see app.yaml).'"
   },
   "dependencies": {
     "@databricks/appkit": "0.66.1",
