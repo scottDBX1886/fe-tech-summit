@@ -45,13 +45,15 @@ import * as mlflow from 'mlflow-tracing';
 import { z } from 'zod';
 import { authHeaders } from '../lib/auth.js';
 import type { AppDb } from '../db/index.js';
-// The Lakebase read helpers the Assist tools wire up — the synced read-only
-// mirrors (open_queue, payment_position, disposition_recommendations).
+// The Lakebase read + write helpers the case-ops tools wire up. Reads are the
+// synced read-only mirrors (open_queue, payment_position,
+// disposition_recommendations); recordCaseAction is the ONLY write.
 import {
   getOpenFlag,
   worstFlag,
   getPayment,
   getRecommendation,
+  recordCaseAction,
 } from '../db/queries/cases.js';
 import type { OpenFlag } from '../db/queries/cases.js';
 // The data-backend helpers. Both are config-driven and share the same
@@ -257,14 +259,58 @@ function makeTools(ctx: AgentContext): Tool[] {
         .number()
         .describe('Predicted recovery for this disposition (from rank_dispositions).'),
     }),
-    execute: async () => {
-      // Build 3 (Act) — not yet implemented in this layer. The tool is
-      // REGISTERED so the model knows it exists and the Assist chain can draft
-      // + STOP for approval; the write lands in the next layer.
-      throw new Error(
-        'Not implemented — execute_case_action is the Build 3 Act layer.',
-      );
-    }
+    execute: async ({
+      payment_id: paymentId,
+      action_type: actionType,
+      hold_duration_hours: holdDurationHours,
+      drafted_request: draftedRequest,
+      predicted_recovery_usd: predictedRecoveryUsd,
+    }) =>
+      mlflow.withSpan(
+        async () => {
+          // Build the audit entry: who approved, when, what action, short notes.
+          const auditEntry = {
+            at: new Date().toISOString(),
+            by: ctx.userEmail,
+            action: 'approved' as const,
+            notes:
+              actionType === 'hold_for_verification' && holdDurationHours
+                ? `Held for ${holdDurationHours} hours per fraud flag review`
+                : actionType === 'refer_to_investigation'
+                  ? 'Referred to investigation team'
+                  : 'Released with audit trail for verification',
+          };
+
+          // Call the write helper to record the case action atomically.
+          const caseAction = await recordCaseAction(ctx.db, {
+            paymentId,
+            actionType,
+            holdDurationHours,
+            draftedRequest,
+            predictedRecoveryUsd,
+            approvedBy: ctx.userEmail,
+            auditEntry,
+          });
+
+          // Return the inserted row's details + a human confirmation message.
+          return {
+            id: caseAction.id,
+            status: caseAction.status,
+            message: `Disposition recorded: ${paymentId} → ${actionType}. Predicted recovery: $${predictedRecoveryUsd.toFixed(0)}. Audit trail logged.`,
+          };
+        },
+        {
+          name: 'execute_case_action',
+          spanType: mlflow.SpanType.TOOL,
+          inputs: {
+            payment_id: paymentId,
+            action_type: actionType,
+            hold_duration_hours: holdDurationHours,
+            drafted_request: draftedRequest,
+            predicted_recovery_usd: predictedRecoveryUsd,
+          },
+        },
+      ),
   });
 
   // find_flag / rank_dispositions / execute_case_action are

@@ -516,3 +516,68 @@ export async function recentActivity(
     notes: r.notes,
   }));
 }
+
+// ============================================================================
+// Write helpers — the Act layer (Build 3).
+// ============================================================================
+
+/**
+ * Record an approved case action to the writable case_actions table.
+ * Wraps the INSERT in a transaction so the write commits atomically or fails cleanly.
+ *
+ * The inserted row captures the approved disposition (action_type + hold duration +
+ * drafted memo + predicted recovery) + an audit trail entry (who, when, action).
+ * This is the single write point in the app's Act layer — called only after examiner approval.
+ */
+export async function recordCaseAction(
+  db: AppDb,
+  input: {
+    paymentId: string;
+    actionType: Disposition;
+    holdDurationHours: number | null;
+    draftedRequest: string;
+    predictedRecoveryUsd: number;
+    approvedBy: string;
+    auditEntry: AuditEntry;
+  },
+): Promise<CaseAction> {
+  return db.transaction(async (tx) => {
+    // INSERT one row into app.case_actions with the approved disposition details
+    // + an audit trail entry (initially just the approval entry; future actions append).
+    // signal_type is left NULL (nullable column for grain migration compatibility).
+    // audit_trail is a JSONB array containing the one audit entry passed in.
+    const res = await tx.execute(sql`
+      INSERT INTO app.case_actions (
+        payment_id,
+        action_type,
+        hold_duration_hours,
+        drafted_request,
+        predicted_recovery_usd,
+        status,
+        approved_by,
+        audit_trail,
+        decided_at
+      )
+      VALUES (
+        ${input.paymentId},
+        ${input.actionType},
+        ${input.holdDurationHours},
+        ${input.draftedRequest},
+        ${input.predictedRecoveryUsd},
+        'approved',
+        ${input.approvedBy},
+        ${JSON.stringify([input.auditEntry])}::jsonb,
+        NOW()
+      )
+      RETURNING id, payment_id, action_type, hold_duration_hours,
+                drafted_request, predicted_recovery_usd, status, approved_by,
+                audit_trail, created_at, decided_at
+    `);
+
+    const row = res.rows[0] as CaseActionSqlRow | undefined;
+    if (!row) {
+      throw new Error('Failed to insert case action — no row returned');
+    }
+    return toCaseAction(row);
+  });
+}
