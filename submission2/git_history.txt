@@ -1,4 +1,6 @@
-* acfca3f (HEAD -> dev, origin/dev) Layer 0 (scaffold): bind sql-warehouse resource at app-create time
+* c628618 (HEAD -> dev) Layer 2 (Assist): retrieve memo grounding from the Build-1 Lakebase Search index
+* 88f3fa0 (origin/dev) Build 2 evidence: submission2 bundle (all 7 required exports)
+* acfca3f Layer 0 (scaffold): bind sql-warehouse resource at app-create time
 * f5942aa Layer 0 (scaffold): stop shipping local .env to the Apps container
 * c7d9264 Layer 0 (scaffold): mark deploy/setup scripts executable
 * db06185 Layer 0 (scaffold): container build no-op + Autoscale Lakebase env in app.yaml
