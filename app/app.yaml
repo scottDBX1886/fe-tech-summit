@@ -66,3 +66,8 @@ env:
     value: sent_benefits
   - name: GENIE_SPACE_ID
     value: 01f1a23080a2179688ecae418471b534
+  # The published "Sentinel Payment Integrity" AI/BI dashboard embedded on the
+  # /dashboard page. (config/app.json's default was a stale UUID from another
+  # demo that doesn't exist in this workspace, leaving the page blank.)
+  - name: DASHBOARD_ID
+    value: 01f1a230f029141a91588c0104aa8467

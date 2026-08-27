@@ -1,0 +1,65 @@
+{
+  "claim": "Assist memo drafting retrieves from the Build-1 Lakebase Search index (Postgres full-text search over public.reference_playbooks.search_vector), NOT a separate vector store.",
+  "index": {
+    "engine": "Databricks Lakebase (Postgres) full-text search",
+    "location": "public.reference_playbooks",
+    "connection": "the app-owned Lakebase pool (LAKEBASE_ENDPOINT projects/sentinel-payments/branches/production) — same pool as the queue + write-back",
+    "source_of_truth": "Build 1 pipeline lands playbooks in Lakebase; mirrored to Delta as sent_benefits.lb_reference_playbooks_history (CDC)",
+    "indexed_columns": [
+      {
+        "table_schema": "public",
+        "table_name": "reference_playbooks",
+        "column_name": "embedding",
+        "data_type": "USER-DEFINED"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "reference_playbooks",
+        "column_name": "search_vector",
+        "data_type": "tsvector"
+      }
+    ],
+    "row_count": 8,
+    "separate_vector_store_used": false
+  },
+  "retrieval_call": {
+    "app_helper": "searchPlaybooks(db, query, { signalType })  [server/db/queries/cases.ts]",
+    "agent_tool": "search_playbooks(query, signal_type)  [server/agent/caseops.ts]",
+    "query": "duplicate identity cross agency fraud match high risk",
+    "signal_type": "duplicate_identity",
+    "fts_sql": "SELECT playbook_id, signal_type, risk_level, title, guidance_text, verification_steps, regulatory_cite, ts_rank(search_vector, to_tsquery('english', :tsquery)) AS rank FROM public.reference_playbooks WHERE search_vector @@ to_tsquery('english', :tsquery) OR signal_type = :signal_type ORDER BY CASE WHEN signal_type = :signal_type THEN 0 ELSE 1 END, rank DESC LIMIT 3"
+  },
+  "retrieved_rows": [
+    {
+      "playbook_id": 2,
+      "signal_type": "duplicate_identity",
+      "risk_level": "high",
+      "title": "Duplicate Identity Detection Protocol",
+      "regulatory_cite": "IPERA 2010, 42 USC §1320a-7a",
+      "ts_rank": 0.037414957,
+      "guidance_text": "A duplicate identity flag means the beneficiary's identifying information (SSN, name+DOB combination) matches another active beneficiary in the same or different program. This may indicate identity theft, data entry errors, or intentional multi-enrollment fraud.",
+      "verification_steps": "1. Compare full identity records (name, DOB, SSN, address) between matched profiles. 2. Check enrollment dates for temporal overlap. 3. Review payment history for both profiles. 4. Flag for investigation if both profiles received concurrent payments."
+    },
+    {
+      "playbook_id": 1,
+      "signal_type": "cross_agency_fraud_flag",
+      "risk_level": "high",
+      "title": "Cross-Agency Fraud Match Response",
+      "regulatory_cite": "31 USC §3321, OMB Circular A-123 Appendix C",
+      "ts_rank": 0.050871678,
+      "guidance_text": "When a cross-agency fraud match is detected, the payment involves identity or eligibility data that conflicts with records from another federal agency (SSA, IRS, DHS). This is a strong signal indicating potential identity theft or multi-program fraud.",
+      "verification_steps": "1. Verify beneficiary SSN against SSA death master file. 2. Cross-reference with IRS income records. 3. Check DHS immigration status if applicable. 4. Request identity verification documents from beneficiary within 10 business days."
+    },
+    {
+      "playbook_id": 7,
+      "signal_type": "residence_mismatch",
+      "risk_level": "low",
+      "title": "Residence Verification Protocol",
+      "regulatory_cite": "SNAP 7 CFR §273.2(f)",
+      "ts_rank": 0.01709795,
+      "guidance_text": "The beneficiary's address on file does not match USPS records, utility databases, or conflicts with another beneficiary's address in a way that suggests household composition fraud.",
+      "verification_steps": "1. Verify current address against USPS NCOA database. 2. Check utility records for occupancy. 3. If address matches another beneficiary, verify household composition. 4. Send residence verification form to beneficiary."
+    }
+  ],
+  "generated_at": "2026-08-27T20:33:29.758Z"
+}

@@ -31,7 +31,7 @@
 
   // Embedded AI/BI dashboard (UUID). The Sentinel payment-integrity
   // validation dashboard. Empty → the /dashboard route + tile render inert.
-  "dashboardId": "${DASHBOARD_ID:01f19f90ed911070b65a7c7d061d7492}",
+  "dashboardId": "${DASHBOARD_ID:01f1a230f029141a91588c0104aa8467}",
 
   // Workspace resource IDs → deep-link URLs via /api/resources (PlatformDiagram
   // on /platform). Empty id → tile renders inert.
