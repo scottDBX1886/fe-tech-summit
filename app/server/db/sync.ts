@@ -36,11 +36,11 @@ type DataConfig = {
   catalog: string;
   schema: string;
   tables: {
-    /** gold_queue_scored — one row per payment with risk metrics. */
+    /** gold_open_queue — one row per payment with risk metrics (payment grain). */
     paymentPosition: string;
-    /** gold_open_queue — open flag + risk metrics. */
+    /** gold_open_queue — open flag + risk metrics (payment grain). */
     openQueue: string;
-    /** gold_disposition_recommendations — the ML model's ranked dispositions.
+    /** gold_disposition_recommendations — the ML model's ranked dispositions (payment grain).
      *  Built by the trainee; sync tolerates it not existing yet. */
     dispositionRecommendations?: string;
   };
@@ -71,62 +71,59 @@ export async function syncFromDelta(
 
   const hasDispositionTable = Boolean(cfg.tables.dispositionRecommendations);
 
-  // Fire the position + queue queries in parallel (the slow part). The
-  // disposition-recommendations query is BEST-EFFORT (the trainee may not have
-  // built that Gold table yet), so run it defensively and swallow a
-  // TABLE_OR_VIEW_NOT_FOUND into an empty result.
+  // Fire the position + queue queries in parallel (the slow part). Both read from
+  // gold_open_queue (it's the payment-grained source). The disposition-recommendations
+  // query is BEST-EFFORT (the trainee may not have built that Gold table yet),
+  // so run it defensively and swallow a TABLE_OR_VIEW_NOT_FOUND into an empty result.
   const [positionRows, queueRows, dispositionRows] = await Promise.all([
     execSql<{
       payment_id: string;
-      payment_amount: number | null;
-      signal_type: string;
-      signal_name: string | null;
-      category: string | null;
+      program: string | null;
+      state: string | null;
+      payment_amount_usd: number | null;
+      queue_date: string | null;
+      n_signals: number | null;
+      signal_list: string | null;
       risk_level: string | null;
       improper_payment_exposure_usd: number | null;
-      flag_risk_score: number | null;
-      flag_frequency: number | null;
-      recommended_disposition: string | null;
-      hold_duration_hours: number | null;
-      flag_status: string | null;
+      projected_recovery_if_investigated_usd: number | null;
     }>(
       warehouseId,
-      `SELECT payment_id, payment_amount, signal_type, signal_name, category,
-              risk_level, improper_payment_exposure_usd, flag_risk_score,
-              flag_frequency, recommended_disposition, hold_duration_hours,
-              flag_status
+      `SELECT payment_id, program, state, payment_amount_usd, queue_date,
+              n_signals, signal_list, risk_level, improper_payment_exposure_usd,
+              projected_recovery_if_investigated_usd
        FROM ${fq('paymentPosition')}`,
     ),
     execSql<{
       payment_id: string;
-      signal_type: string;
-      improper_payment_exposure_usd: number | null;
-      risk_level: string | null;
+      n_signals: number | null;
       signal_list: string | null;
-      flag_frequency: number | null;
-      hold_duration_hours: number | null;
+      risk_level: string | null;
+      improper_payment_exposure_usd: number | null;
     }>(
       warehouseId,
-      `SELECT payment_id, signal_type, improper_payment_exposure_usd,
-              risk_level, signal_list, flag_frequency, hold_duration_hours
+      `SELECT payment_id, n_signals, signal_list, risk_level,
+              improper_payment_exposure_usd
        FROM ${fq('openQueue')}`,
     ),
     hasDispositionTable
       ? execSql<{
           payment_id: string;
-          signal_type: string;
           recommended_disposition: string | null;
-          recommended_hold_hours: number | null;
           predicted_recovery_usd: number | null;
-          predicted_cost_usd: number | null;
-          action_ranking: string | null;
+          disposition_ranking: string | null;
+          confidence_score: number | null;
           scored_at: string | null;
         }>(
           warehouseId,
-          `SELECT payment_id, signal_type, recommended_disposition,
-                  recommended_hold_hours, predicted_recovery_usd,
-                  predicted_cost_usd,
-                  to_json(action_ranking) AS action_ranking, scored_at
+          // The real gold_disposition_recommendations is payment-grained and does
+          // NOT carry recommended_hold_hours or predicted_cost_usd as columns —
+          // those live INSIDE disposition_ranking (per-option holdHours + cost).
+          // We select only the real columns here and DERIVE the two scalar fields
+          // from the recommended option after parsing the ranking (below).
+          `SELECT payment_id, recommended_disposition,
+                  predicted_recovery_usd,
+                  disposition_ranking, confidence_score, scored_at
            FROM ${fq('dispositionRecommendations')}`,
         ).catch((e) => {
           // The trainee builds this table in the ML step — until then it
@@ -150,30 +147,27 @@ export async function syncFromDelta(
         .insert(paymentPosition)
         .values(
           chunk.map((r) => ({
-            id: `${r.payment_id}:${r.signal_type}`,
+            id: r.payment_id,
             paymentId: r.payment_id,
-            paymentAmount: r.payment_amount === null ? null : Number(r.payment_amount),
-            signalType: r.signal_type,
-            signalName: r.signal_name,
-            category: r.category,
+            program: r.program,
+            state: r.state,
+            paymentAmountUsd: r.payment_amount_usd === null ? null : Number(r.payment_amount_usd),
+            queueDate: r.queue_date,
+            nSignals: r.n_signals === null ? null : Number(r.n_signals),
+            // Join signal_list array into comma-separated text.
+            signals:
+              r.signal_list && Array.isArray(JSON.parse(r.signal_list))
+                ? JSON.parse(r.signal_list).join(', ')
+                : r.signal_list,
             riskLevel: r.risk_level,
             improperPaymentExposureUsd:
               r.improper_payment_exposure_usd === null
                 ? null
                 : Number(r.improper_payment_exposure_usd),
-            flagRiskScore: r.flag_risk_score === null ? null : Number(r.flag_risk_score),
-            flagFrequency:
-              r.flag_frequency === null ? null : Number(r.flag_frequency),
-            recommendedDisposition: r.recommended_disposition,
-            holdDurationHours:
-              r.hold_duration_hours === null ? null : Number(r.hold_duration_hours),
-            // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-            flagStatus: (r.flag_status === 'flagged' ||
-            r.flag_status === 'verified' ||
-            r.flag_status === 'cleared' ||
-            r.flag_status === 'escalated'
-              ? r.flag_status
-              : 'flagged') as 'flagged' | 'verified' | 'cleared' | 'escalated',
+            projectedRecoveryIfInvestigatedUsd:
+              r.projected_recovery_if_investigated_usd === null
+                ? null
+                : Number(r.projected_recovery_if_investigated_usd),
           })),
         )
         .onConflictDoNothing(),
@@ -189,19 +183,15 @@ export async function syncFromDelta(
         .insert(openQueue)
         .values(
           chunk.map((r) => ({
-            id: `${r.payment_id}:${r.signal_type}`,
+            id: r.payment_id,
             paymentId: r.payment_id,
-            signalType: r.signal_type,
+            nSignals: r.n_signals === null ? null : Number(r.n_signals),
+            signalList: r.signal_list,
+            riskLevel: r.risk_level,
             improperPaymentExposureUsd:
               r.improper_payment_exposure_usd === null
                 ? null
                 : Number(r.improper_payment_exposure_usd),
-            riskLevel: r.risk_level,
-            signalList: r.signal_list,
-            flagFrequency:
-              r.flag_frequency === null ? null : Number(r.flag_frequency),
-            holdDurationHours:
-              r.hold_duration_hours === null ? null : Number(r.hold_duration_hours),
           })),
         )
         .onConflictDoNothing(),
@@ -216,11 +206,8 @@ export async function syncFromDelta(
       db
         .insert(dispositionRecommendations)
         .values(
-          chunk.map((r) => ({
-            id: `${r.payment_id}:${r.signal_type}`,
-            paymentId: r.payment_id,
-            signalType: r.signal_type,
-            recommendedDisposition: (r.recommended_disposition === 'release' ||
+          chunk.map((r) => {
+            const recommendedDisposition = (r.recommended_disposition === 'release' ||
             r.recommended_disposition === 'hold_for_verification' ||
             r.recommended_disposition === 'refer_to_investigation'
               ? r.recommended_disposition
@@ -228,17 +215,37 @@ export async function syncFromDelta(
               | 'release'
               | 'hold_for_verification'
               | 'refer_to_investigation'
-              | null,
-            recommendedHoldHours:
-              r.recommended_hold_hours === null ? null : Number(r.recommended_hold_hours),
-            predictedRecoveryUsd:
-              r.predicted_recovery_usd === null
-                ? null
-                : Number(r.predicted_recovery_usd),
-            predictedCostUsd:
-              r.predicted_cost_usd === null ? null : Number(r.predicted_cost_usd),
-            actionRanking: parseActionRanking(r.action_ranking),
-          })),
+              | null;
+            // Transform disposition_ranking JSON string → ActionOption[].
+            // disposition_ranking is an array of objects with:
+            //   { disposition, predicted_recovery_usd, predicted_net_value_usd, citizen_delay_cost, rank }
+            // Map to ActionOption:
+            //   { disposition, holdHours, costUsd, predictedRecoveryUsd, predictedNetValueUsd }
+            const actionRanking = parseDispositionRanking(r.disposition_ranking);
+            // recommended_hold_hours + predicted_cost_usd aren't source columns;
+            // derive them from the recommended option within the ranking (the
+            // per-option holdHours + costUsd that parseDispositionRanking produced).
+            const recommendedOption = actionRanking.find(
+              (o) => o.disposition === recommendedDisposition,
+            );
+            return {
+              id: r.payment_id,
+              paymentId: r.payment_id,
+              recommendedDisposition,
+              recommendedHoldHours: recommendedOption?.holdHours ?? null,
+              predictedRecoveryUsd:
+                r.predicted_recovery_usd === null
+                  ? null
+                  : Number(r.predicted_recovery_usd),
+              predictedCostUsd: recommendedOption?.costUsd ?? null,
+              actionRanking,
+              confidenceScore:
+                r.confidence_score === null ? null : Number(r.confidence_score),
+              // The SQL Statements API returns timestamps as strings; the
+              // Drizzle `timestamp` column wants a Date.
+              scoredAt: r.scored_at === null ? null : new Date(r.scored_at),
+            };
+          }),
         )
         .onConflictDoNothing(),
     );
@@ -251,14 +258,38 @@ export async function syncFromDelta(
   console.log(`[sync] Done in ${dt}s`);
 }
 
-/** `action_ranking` comes back as a JSON string (we `to_json(...)` it in SQL
- *  because the SQL Statements API serializes complex types as strings).
- *  Parse defensively — a malformed ranking just becomes []. */
-function parseActionRanking(raw: string | null): ActionOption[] {
+/** Transform `disposition_ranking` (source JSON string) → ActionOption[].
+ *  Source shape: [{ disposition, predicted_recovery_usd, predicted_net_value_usd,
+ *  citizen_delay_cost, rank }, ...]
+ *  Target shape: [{ disposition, holdHours, costUsd, predictedRecoveryUsd,
+ *  predictedNetValueUsd }, ...]
+ *  Hold hours defaults: 48 for 'hold_for_verification', 0 otherwise. */
+function parseDispositionRanking(raw: string | null): ActionOption[] {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? (parsed as ActionOption[]) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item: Record<string, unknown>) => {
+        const disposition = item.disposition as string;
+        if (
+          disposition !== 'release' &&
+          disposition !== 'hold_for_verification' &&
+          disposition !== 'refer_to_investigation'
+        ) {
+          return null;
+        }
+        const holdHours =
+          disposition === 'hold_for_verification' ? 48 : 0;
+        return {
+          disposition: disposition as 'release' | 'hold_for_verification' | 'refer_to_investigation',
+          holdHours,
+          costUsd: Number(item.citizen_delay_cost ?? 0),
+          predictedRecoveryUsd: Number(item.predicted_recovery_usd ?? 0),
+          predictedNetValueUsd: Number(item.predicted_net_value_usd ?? 0),
+        };
+      })
+      .filter((opt): opt is ActionOption => opt !== null);
   } catch {
     return [];
   }

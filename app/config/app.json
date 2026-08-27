@@ -41,7 +41,7 @@
   "lakebaseProjectId": "${LAKEBASE_PROJECT_ID:}",
   "appUrl":            "${APP_URL:}",
   // The disposition ML model (UC-registered). The trainee builds it in Build 2.
-  "mlModelName":       "${DEMO_CATALOG:ai_demo_gen}.${DEMO_SCHEMA:sentinel_benefits}.disposition_recommender",
+  "mlModelName":       "${DEMO_CATALOG:serverless_scottj_techsummit_catalog}.${DEMO_SCHEMA:sent_benefits}.disposition_recommender",
 
   // Delta source for boot-time Lakebase mirror (server/db/sync.ts). catalog +
   // schema from env; the table NAMES are the Sentinel Gold tables. Keep
@@ -49,10 +49,10 @@
   // dispositionRecommendations is OPTIONAL — the trainee builds that Gold table
   // in the ML step, so sync tolerates it not existing yet.
   "data": {
-    "catalog": "${DEMO_CATALOG:ai_demo_gen}",
-    "schema":  "${DEMO_SCHEMA:sentinel_benefits}",
+    "catalog": "${DEMO_CATALOG:serverless_scottj_techsummit_catalog}",
+    "schema":  "${DEMO_SCHEMA:sent_benefits}",
     "tables": {
-      "paymentPosition":         "gold_queue_scored",
+      "paymentPosition":         "gold_open_queue",
       "openQueue":               "gold_open_queue",
       "dispositionRecommendations": "gold_disposition_recommendations",
       "beneficiaries":           "raw_beneficiaries"

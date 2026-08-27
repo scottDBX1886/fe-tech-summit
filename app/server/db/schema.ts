@@ -124,58 +124,48 @@ export const feedback = appSchema.table(
 // ============================================================================
 // Synced read-only mirror (from Delta — Sentinel Gold tables)
 //
-// These mirror `gold_queue_scored`, `gold_open_queue`, and
+// These mirror `gold_open_queue` and
 // `gold_disposition_recommendations`. In Build-1 terms they're UC synced
 // tables — read-only from the app. `db/sync.ts` pulls them at boot; the
 // app SELECTs from them and never writes them.
 // ============================================================================
 
-// `gold_queue_scored` — one row per payment. The queue reads this (filtered
-// to flagged payments / open queue). PK is the composite (payment_id, signal_type);
-// we mirror it as a synthetic `id` `${payment}:${signal}` for the drizzle PK +
-// the queue's row key.
+// `gold_open_queue` — one row per payment (payment grain). The queue reads this
+// (filtered to flagged payments / open queue). PK is payment_id; we use id = payment_id.
 export const paymentPosition = appSchema.table(
   'payment_position',
   {
-    // Synthetic `${paymentId}:${signalType}`.
+    // PK = payment_id (payment grain, not signal grain).
     id: text('id').primaryKey(),
     paymentId: text('payment_id').notNull(),
-    paymentAmount: doublePrecision('payment_amount'),
-    signalType: text('signal_type').notNull(),
-    signalName: text('signal_name'),
-    category: text('category'),
+    program: text('program'),
+    state: text('state'),
+    paymentAmountUsd: doublePrecision('payment_amount_usd'),
+    queueDate: text('queue_date'),
+    nSignals: integer('n_signals'),
+    // Comma-joined signal list from gold_open_queue.signal_list array.
+    signals: text('signals'),
     riskLevel: text('risk_level'),
     improperPaymentExposureUsd: doublePrecision('improper_payment_exposure_usd'),
-    flagRiskScore: doublePrecision('flag_risk_score'),
-    flagFrequency: integer('flag_frequency'),
-    recommendedDisposition: text('recommended_disposition'),
-    holdDurationHours: integer('hold_duration_hours'),
-    flagStatus: text('flag_status', {
-      enum: ['flagged', 'verified', 'cleared', 'escalated'],
-    })
-      .notNull()
-      .default('flagged'),
+    projectedRecoveryIfInvestigatedUsd: doublePrecision('projected_recovery_if_investigated_usd'),
   },
   (t) => [
     index('position_payment_idx').on(t.paymentId),
-    index('position_status_idx').on(t.flagStatus),
-    index('position_signal_idx').on(t.signalType),
+    index('position_risk_idx').on(t.riskLevel),
   ],
 );
 
-// `gold_open_queue` — the flagged payment + its risk metrics. PK is
-// the composite (payment_id, signal_type); mirrored as synthetic `id`.
+// `gold_open_queue` — the flagged payment + its risk metrics (payment grain).
+// PK is payment_id.
 export const openQueue = appSchema.table(
   'open_queue',
   {
-    id: text('id').primaryKey(), // `${paymentId}:${signalType}`
+    id: text('id').primaryKey(), // payment_id (payment grain)
     paymentId: text('payment_id').notNull(),
-    signalType: text('signal_type').notNull(),
-    improperPaymentExposureUsd: doublePrecision('improper_payment_exposure_usd'),
-    riskLevel: text('risk_level'),
+    nSignals: integer('n_signals'),
     signalList: text('signal_list'),
-    flagFrequency: integer('flag_frequency'),
-    holdDurationHours: integer('hold_duration_hours'),
+    riskLevel: text('risk_level'),
+    improperPaymentExposureUsd: doublePrecision('improper_payment_exposure_usd'),
   },
   (t) => [index('queue_payment_idx').on(t.paymentId)],
 );
@@ -189,13 +179,12 @@ export const openQueue = appSchema.table(
 //
 // NOTE: the trainee BUILDS this table (it's the ML step of the workshop),
 // so sync.ts tolerates it not existing yet — the mirror is simply empty
-// until they produce it.
+// until they produce it. Payment grain: one row per payment.
 export const dispositionRecommendations = appSchema.table(
   'disposition_recommendations',
   {
-    id: text('id').primaryKey(), // `${paymentId}:${signalType}`
+    id: text('id').primaryKey(), // payment_id (payment grain)
     paymentId: text('payment_id').notNull(),
-    signalType: text('signal_type').notNull(),
     recommendedDisposition: text('recommended_disposition', {
       enum: ['release', 'hold_for_verification', 'refer_to_investigation'],
     }),
@@ -203,7 +192,9 @@ export const dispositionRecommendations = appSchema.table(
     predictedRecoveryUsd: doublePrecision('predicted_recovery_usd'),
     predictedCostUsd: doublePrecision('predicted_cost_usd'),
     // All disposition options with predicted recovery $ + cost.
+    // Transformed from the source disposition_ranking JSON string.
     actionRanking: jsonb('action_ranking').$type<ActionOption[]>().notNull().default([]),
+    confidenceScore: doublePrecision('confidence_score'),
     scoredAt: timestamp('scored_at', { withTimezone: true }),
   },
   (t) => [index('disposition_payment_idx').on(t.paymentId)],
@@ -226,7 +217,9 @@ export const caseActions = appSchema.table(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     paymentId: text('payment_id').notNull(),
-    signalType: text('signal_type').notNull(),
+    // Signal type is nullable — the write path is payment-grained; the column
+    // exists for compatibility during the grain migration.
+    signalType: text('signal_type'),
     actionType: text('action_type', {
       enum: ['release', 'hold_for_verification', 'refer_to_investigation'],
     }).notNull(),
@@ -250,7 +243,7 @@ export const caseActions = appSchema.table(
     decidedAt: timestamp('decided_at', { withTimezone: true }),
   },
   (t) => [
-    index('case_actions_payment_idx').on(t.paymentId, t.signalType),
+    index('case_actions_payment_idx').on(t.paymentId),
     index('case_actions_created_idx').on(t.createdAt),
   ],
 );

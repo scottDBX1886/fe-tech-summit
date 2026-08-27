@@ -7,7 +7,7 @@
  *
  * How the data flows: each chart fetches `/api/charts/<key>` (see
  * server/routes/charts.ts). That route reads config/queries/<key>.sql —
- * written SCHEMA-RELATIVE (`FROM gold_queue_scored`, no catalog/schema
+ * written SCHEMA-RELATIVE (`FROM gold_open_queue`, no catalog/schema
  * qualifier) — and runs it with the demo's catalog+schema as the SQL
  * session context, so one env var (DEMO_CATALOG/DEMO_SCHEMA) drives the
  * analytics tables on any workspace. Rows come back via `useChartData` and

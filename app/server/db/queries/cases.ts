@@ -29,7 +29,7 @@ const asActionStatus = (v: string | null): ActionStatus | null =>
 
 // ============================================================================
 // PaymentRow — the Operations queue's primary entity. Reads the synced
-// read-only queue mirror (payment_position / gold_queue_scored), LEFT JOIN-ed
+// read-only queue mirror (payment_position / gold_open_queue), LEFT JOIN-ed
 // to its LATEST case_actions row (so `live_disposition` / `action_status`
 // reflect the writable table) and to disposition_recommendations (the model's
 // recommended disposition per flagged payment).

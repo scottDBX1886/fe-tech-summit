@@ -34,7 +34,7 @@ export type ActionStatus = 'proposed' | 'approved' | 'executed' | 'overridden';
 
 /**
  * One flagged payment, as rendered in the Operations queue.
- * Read-only mirror of `gold_queue_scored`, LEFT JOIN-ed to its latest
+ * Read-only mirror of `gold_open_queue`, LEFT JOIN-ed to its latest
  * `case_actions` row (so `liveDisposition`/`actionStatus` reflect the writable
  * table without mutating the synced position).
  */
