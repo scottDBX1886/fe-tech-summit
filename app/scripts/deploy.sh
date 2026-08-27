@@ -120,24 +120,31 @@ for f in .env .env.example; do
     databricks workspace delete "$WS_PATH/$f" ${PROFILE_FLAG[@]+"${PROFILE_FLAG[@]}"} 2>/dev/null || true
 done
 
-# 2) Create the App resource if missing. Scopes are NOT set here — the app's
-#    OBO scopes come from `app.yaml`'s `user_authorization.scopes` (incl.
-#    `model-serving`), which `databricks apps deploy` (step 3) applies from the
-#    uploaded source. Do NOT set `user_api_scopes` via `apps create/update` on
-#    this interactive path — it overrides/clobbers the app.yaml scopes (using a
-#    different scope vocabulary, e.g. serving.serving-endpoints ≠ model-serving)
-#    and the agent then 403s "required scopes: model-serving".
-# The app.yaml env uses `valueFrom: sql-warehouse`, which requires an app
-# resource named `sql-warehouse` to be BOUND — bind it in the create payload so
-# it's present from the start (binding it after-the-fact via `apps update` races
-# with `apps deploy` and can get dropped). DATABRICKS_WAREHOUSE_ID drives both
-# analytics queries and the boot-time Delta->Lakebase sync. Lakebase itself is
-# Autoscale here (no classic `postgres` resource) — it connects via the plain
-# LAKEBASE_ENDPOINT/PG* env in app.yaml, not a resource binding.
-APP_CREATE_JSON="$(python3 -c "
+# 2) Create/update the App with BOTH its OBO scopes AND the warehouse resource.
+#
+#    IMPORTANT — scopes + resources must travel TOGETHER in this --json payload:
+#    the moment you set `resources` (or any field) via `apps create/update --json`,
+#    the platform materializes `user_api_scopes` on the app object, and that
+#    OVERRIDES app.yaml's `user_authorization.scopes`. If we omit scopes here,
+#    they collapse to the default minimal set (iam.* only) and the agent 403s
+#    "Invalid scope, required scopes: model-serving". So we set the full scope
+#    list explicitly (same names as app.yaml) alongside the resource binding.
+#
+#    The `sql-warehouse` resource is required because app.yaml's env uses
+#    `valueFrom: sql-warehouse`; binding it in the create payload (vs a later
+#    `apps update`) avoids a race with `apps deploy` that could drop it.
+#    DATABRICKS_WAREHOUSE_ID drives analytics + the boot Delta->Lakebase sync.
+#    Lakebase is Autoscale here (no classic `postgres` resource) — it connects
+#    via the plain LAKEBASE_ENDPOINT/PG* env in app.yaml, not a resource binding.
+APP_SPEC_JSON="$(python3 -c "
 import json, os
 print(json.dumps({
     'name': os.environ['APP_NAME'],
+    'user_api_scopes': [
+        'model-serving', 'genie', 'sql', 'postgres', 'ai-gateway',
+        'catalog.catalogs:read', 'catalog.schemas:read', 'catalog.tables:read',
+        'iam.access-control:read', 'iam.current-user:read',
+    ],
     'resources': [{
         'name': 'sql-warehouse',
         'description': 'Serverless warehouse for analytics + boot sync',
@@ -146,15 +153,16 @@ print(json.dumps({
 }))
 ")"
 if ! databricks apps get "$APP_NAME" ${PROFILE_FLAG[@]+"${PROFILE_FLAG[@]}"} >/dev/null 2>&1; then
-    echo "[deploy] creating app $APP_NAME (with sql-warehouse resource)"
-    if ! err="$(databricks apps create --json "$APP_CREATE_JSON" ${PROFILE_FLAG[@]+"${PROFILE_FLAG[@]}"} 2>&1 1>/dev/null)"; then
+    echo "[deploy] creating app $APP_NAME (with OBO scopes + sql-warehouse resource)"
+    if ! err="$(databricks apps create --json "$APP_SPEC_JSON" ${PROFILE_FLAG[@]+"${PROFILE_FLAG[@]}"} 2>&1 1>/dev/null)"; then
         explain_apps_error create "$err"
         exit 1
     fi
 else
-    # App exists — ensure the warehouse resource is bound (idempotent).
-    echo "[deploy] ensuring sql-warehouse resource is bound"
-    databricks apps update "$APP_NAME" --json "$APP_CREATE_JSON" ${PROFILE_FLAG[@]+"${PROFILE_FLAG[@]}"} >/dev/null 2>&1 || true
+    # App exists — reassert scopes + warehouse resource (idempotent). Keeps the
+    # OBO scopes from regressing to the default set on every redeploy.
+    echo "[deploy] ensuring OBO scopes + sql-warehouse resource are set"
+    databricks apps update "$APP_NAME" --json "$APP_SPEC_JSON" ${PROFILE_FLAG[@]+"${PROFILE_FLAG[@]}"} >/dev/null 2>&1 || true
 fi
 
 # 3) Deploy the uploaded source.
