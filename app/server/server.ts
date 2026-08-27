@@ -651,6 +651,20 @@ void (async () => {
       console.warn('[boot] could not resolve MLflow exporter auth from the app client — trace upload may fail:', (e as Error).message);
     }
 
+    // mlflow-tracing builds its OWN bundled @databricks/sdk-experimental Config
+    // and, on the Apps container, discovers MULTIPLE auth methods — the app SP's
+    // injected DATABRICKS_CLIENT_ID/SECRET (OAuth) AND a /home/app/.databrickscfg
+    // — so its resolver throws "more than one authorization method configured:
+    // oauth and pat" and every trace upload fails. Passing databricksToken alone
+    // doesn't disambiguate. Pinning DATABRICKS_AUTH_TYPE=pat makes the SDK prefer
+    // the (explicit) token and IGNORE the OAuth env + config file (see the SDK's
+    // DefaultCredentials: "Ignoring <x> auth, because pat is preferred"). Safe for
+    // the rest of the app: AppKit's own clients set authType:'pat' in code, so
+    // this env only steers mlflow's otherwise-unconfigured Config. Only set it
+    // when we actually resolved a token to pass.
+    if (mlflowHost && mlflowToken) {
+      process.env.DATABRICKS_AUTH_TYPE = 'pat';
+    }
     mlflow.init({
       trackingUri: 'databricks',
       experimentId: agentExperimentId,

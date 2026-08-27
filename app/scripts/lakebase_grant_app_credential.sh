@@ -197,6 +197,50 @@ BEGIN
     END IF;
   END LOOP;
 END \$\$;
+
+-- Transfer OWNERSHIP of any of these schemas + their objects that the
+-- CONNECTING USER owns to the SP. GRANT ALL is NOT enough for AppKit's cache
+-- migration: CREATE INDEX / ALTER TABLE require OWNERSHIP. The appkit_cache_entries
+-- table is created by whoever boots FIRST — if a developer ran locally before the
+-- SP deploy, the USER owns it and the SP's cache init then fails with
+-- "must be owner of table appkit_cache_entries". Reassign only the objects WE own
+-- (stale-SP ownership is handled by delete-role --reassign-owned-to above), so this
+-- is a no-op once the SP owns them. Non-destructive: ownership change only.
+--
+-- Postgres requires the connecting user to be a MEMBER of the target role to
+-- ALTER ... OWNER TO it, so grant ourselves membership in the SP role first
+-- (idempotent; safe to keep). Wrapped defensively so a failure here doesn't
+-- abort the whole grant.
+DO \$\$
+BEGIN
+  EXECUTE format('GRANT %I TO %I', '$SP_ROLE', current_user);
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'could not self-grant SP role membership (%): ownership transfer may skip', SQLERRM;
+END \$\$;
+
+DO \$\$
+DECLARE r record;
+BEGIN
+  FOR r IN
+    SELECT n.nspname, c.relname, c.relkind
+    FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname IN ('app','appkit','drizzle')
+      AND c.relkind IN ('r','S','v','m','p')
+      AND pg_get_userbyid(c.relowner) = current_user
+  LOOP
+    EXECUTE format('ALTER %s %I.%I OWNER TO %I',
+      CASE r.relkind WHEN 'S' THEN 'SEQUENCE' WHEN 'v' THEN 'VIEW'
+                     WHEN 'm' THEN 'MATERIALIZED VIEW' ELSE 'TABLE' END,
+      r.nspname, r.relname, '$SP_ROLE');
+  END LOOP;
+  FOR r IN
+    SELECT nspname FROM pg_namespace
+    WHERE nspname IN ('app','appkit','drizzle')
+      AND pg_get_userbyid(nspowner) = current_user
+  LOOP
+    EXECUTE format('ALTER SCHEMA %I OWNER TO %I', r.nspname, '$SP_ROLE');
+  END LOOP;
+END \$\$;
 EOF
 
 echo "[grant] done."
