@@ -1,0 +1,23 @@
+[
+  {
+    "id": "5a1a8185-9dce-4c57-b64b-99abd8af0c66",
+    "payment_id": "PAY-0000214",
+    "action_type": "hold_for_verification",
+    "hold_duration_hours": 48,
+    "drafted_request": "Hold PAY-0000214 (Child Care, UT) 48h: duplicate_identity + cross_agency_fraud_flag. Verify identity vs. cross-agency match before disbursement.",
+    "predicted_recovery_usd": 177.51,
+    "status": "approved",
+    "approved_by": "scott.johnson@databricks.com",
+    "reviewed_by_role": null,
+    "audit_trail": [
+      {
+        "at": "2026-08-27T19:17:29.336Z",
+        "by": "scott.johnson@databricks.com",
+        "notes": "Held 48h pending manual verification per duplicate_identity flag",
+        "action": "approved"
+      }
+    ],
+    "created_at": "2026-08-27 19:17:29.462885+00",
+    "decided_at": "2026-08-27 19:17:29.462885+00"
+  }
+]

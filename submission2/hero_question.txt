@@ -1,0 +1,41 @@
+HERO QUESTION
+=============
+"Payment PAY-0000214 is flagged — what's the best disposition?"
+
+(The Director of Program Integrity, Priya Raman, opens the flagged-payment
+queue each morning. A cross-agency fraud-match feed + eligibility refresh
+surfaced ~174 high-risk pre-disbursement payments. She needs a DECISION on the
+top flag — surface it, prescribe the move, approve, act — not a dashboard.)
+
+THE DECISION CHAIN (linked record IDs across the exports)
+=========================================================
+payment_id: PAY-0000214   (Child Care · UT · high risk · payment_amount $1,850)
+
+1. VISUALIZE — view_query.sql / view_result.json
+   PAY-0000214 sits in the ranked queue (app.payment_position, synced from
+   gold_open_queue). Signals: duplicate_identity + cross_agency_fraud_flag
+   (n_signals=2). improper_payment_exposure_usd = $1,480.
+
+2. ASSIST — assist_log.jsonl + drafted_sample.md
+   find_flag(PAY-0000214) → reads the live flag + exposure.
+   rank_dispositions(PAY-0000214) → the ML model (app.disposition_recommendations,
+   from gold_disposition_recommendations) ranks:
+     • hold_for_verification  → recovery $177.51, cost $46.25, net $93.52  (rank 1, recommended, 48h)
+     • release                → recovery $0,       cost $0,      net $0      (rank 2)
+     • refer_to_investigation → recovery $231.89,  cost $194.25, net -$11.67 (rank 3)
+   confidence_score = 0.99. The agent drafts the case memo (drafted_sample.md).
+
+3. ACT — writeback_table.json / state_table.json
+   On the examiner's approval, execute_case_action writes ONE row to the
+   writable app.case_actions:
+     action_id: 5a1a8185-9dce-4c57-b64b-99abd8af0c66
+     action_type: hold_for_verification · hold_duration_hours: 48
+     status: approved · approved_by: scott.johnson@databricks.com
+     predicted_recovery_usd: 177.51
+     audit_trail: [{ at, by, action: approved, notes }]
+   On the next read the queue reflects it: PAY-0000214's live_disposition
+   becomes hold_for_verification, flaggedCount ticks 174 → 173, and
+   improper_payment_exposure drops by $1,480 (the closed loop).
+
+LINKED IDS (join key across all exports): payment_id = PAY-0000214
+  → action_id 5a1a8185-9dce-4c57-b64b-99abd8af0c66 (case_actions PK)

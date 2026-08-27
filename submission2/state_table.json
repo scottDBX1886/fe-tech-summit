@@ -1,0 +1,16 @@
+[
+  {
+    "action_id": "5a1a8185-9dce-4c57-b64b-99abd8af0c66",
+    "payment_id": "PAY-0000214",
+    "action_type": "hold_for_verification",
+    "status": "approved",
+    "approved_by": "scott.johnson@databricks.com",
+    "predicted_recovery_usd": 177.51,
+    "proposed_at": "2026-08-27 19:17:29.462885+00",
+    "committed_at": "2026-08-27 19:17:29.462885+00",
+    "event_at": "2026-08-27T19:17:29.336Z",
+    "event_by": "scott.johnson@databricks.com",
+    "event_action": "approved",
+    "event_notes": "Held 48h pending manual verification per duplicate_identity flag"
+  }
+]
