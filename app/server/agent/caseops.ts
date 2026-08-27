@@ -45,6 +45,15 @@ import * as mlflow from 'mlflow-tracing';
 import { z } from 'zod';
 import { authHeaders } from '../lib/auth.js';
 import type { AppDb } from '../db/index.js';
+// The Lakebase read helpers the Assist tools wire up — the synced read-only
+// mirrors (open_queue, payment_position, disposition_recommendations).
+import {
+  getOpenFlag,
+  worstFlag,
+  getPayment,
+  getRecommendation,
+} from '../db/queries/cases.js';
+import type { OpenFlag } from '../db/queries/cases.js';
 // The data-backend helpers. Both are config-driven and share the same
 // DataCallResult shape + ToolProgressEvent stream, so the `ask_data` tool
 // below can delegate to EITHER without the UI caring which powers it. This
@@ -124,13 +133,12 @@ function makeTools(ctx: AgentContext): Tool[] {
       ),
   });
 
-  // ── find_flag — TRAINEE BUILDS (Build 2 · Assist). STUB. ─────────────
-  // TODO — BUILD 2 (trainee): implement this. Read the open flag for a
-  // payment (or the worst one) from Lakebase app.open_queue + app.payment_position:
-  // the fraud/eligibility signals on it, n_signals, risk_level, and
-  // improper-payment exposure. Helper queries are READY in
-  // server/db/queries/cases.ts: `getOpenFlag`, `worstFlag`, `getPayment`.
-  // See APP_WORKSHOP.md → "Layer 2 — Assist".
+  // ── find_flag — TRAINEE BUILDS (Build 2 · Assist). ───────────────────
+  // READ the live flagged payment + its risk metrics from the open queue.
+  // If payment_id is given: read that flag. If null: return the worst
+  // (highest exposure) open flag. Enrich with payment details (program, state,
+  // amount) from payment_position if available. Return a flat object the model
+  // reads: found:true + flag fields, or found:false if nothing exists.
   const findShortfall = tool({
     name: 'find_flag',
     description:
@@ -141,22 +149,51 @@ function makeTools(ctx: AgentContext): Tool[] {
         .nullable()
         .describe('Payment id, e.g. PAY-0000214. Null → return the worst open flagged payment.'),
     }),
-    execute: async () => {
-      throw new Error(
-        'Not implemented — this is your Build 2 Assist task; see APP_WORKSHOP.md',
-      );
-    },
+    execute: async ({ payment_id: paymentId }) =>
+      mlflow.withSpan(
+        async () => {
+          // Read the open flag: either for the specified payment or the worst (by exposure).
+          const flag: OpenFlag | null = paymentId
+            ? await getOpenFlag(ctx.db, paymentId)
+            : await worstFlag(ctx.db);
+
+          if (!flag) {
+            return { found: false };
+          }
+
+          // Enrich with payment details (program, state, amount, recovery exposure).
+          const payment = await getPayment(ctx.db, flag.paymentId);
+
+          return {
+            found: true,
+            payment_id: flag.paymentId,
+            program: payment?.program ?? null,
+            state: payment?.state ?? null,
+            payment_amount_usd: payment?.paymentAmountUsd ?? null,
+            n_signals: flag.nSignals,
+            signals: flag.signalList,
+            risk_level: flag.riskLevel,
+            improper_payment_exposure_usd: flag.improperPaymentExposureUsd,
+            projected_recovery_if_investigated_usd:
+              payment?.projectedRecoveryIfInvestigatedUsd ?? null,
+          };
+        },
+        {
+          name: 'find_flag',
+          spanType: mlflow.SpanType.TOOL,
+          inputs: { payment_id: paymentId },
+        },
+      ),
   });
 
-  // ── rank_dispositions — TRAINEE BUILDS (Build 2 · Assist). STUB. ────────
-  // TODO — BUILD 2 (trainee): implement this. Read app.disposition_recommendations
-  // for {payment_id} and return the model's recommended_disposition,
-  // predicted_recovery_usd, predicted_cost_usd, and the full action_ranking
-  // (all three dispositions with predicted recovery $ + net $ + cost). This is the
-  // demo's "ML in the loop" moment — the agent quotes the ranked options + the
-  // recommended disposition in the draft, and recomputes the what-if
-  // arithmetically from action_ranking. Helper query READY: `getRecommendation`
-  // in cases.ts. See APP_WORKSHOP.md → "Layer 2 — Assist".
+  // ── rank_dispositions — TRAINEE BUILDS (Build 2 · Assist). ───────────────
+  // READ the ML model's ranked dispositions for a payment from
+  // disposition_recommendations. Return the recommended disposition + its
+  // predicted recovery/cost, plus the full action_ranking (all three options
+  // with their hold hours, cost, recovery $, and net value). This is the demo's
+  // "ML in the loop" moment — the agent quotes these ranked options in the
+  // draft and does arithmetic what-ifs from the ranking (don't re-call the
+  // model). Return found:false if no recommendation exists yet.
   const rankRecoveryMoves = tool({
     name: 'rank_dispositions',
     description:
@@ -164,23 +201,41 @@ function makeTools(ctx: AgentContext): Tool[] {
     parameters: z.object({
       payment_id: z.string().describe('Payment id, e.g. PAY-0000214.'),
     }),
-    execute: async () => {
-      throw new Error(
-        'Not implemented — this is your Build 2 Assist task; see APP_WORKSHOP.md',
-      );
-    },
+    execute: async ({ payment_id: paymentId }) =>
+      mlflow.withSpan(
+        async () => {
+          // Read the disposition recommendation from the ML model's batch predictions.
+          const rec = await getRecommendation(ctx.db, paymentId);
+
+          if (!rec) {
+            return { found: false };
+          }
+
+          return {
+            found: true,
+            payment_id: rec.paymentId,
+            recommended_disposition: rec.recommendedDisposition,
+            recommended_hold_hours: rec.recommendedHoldHours,
+            predicted_recovery_usd: rec.predictedRecoveryUsd,
+            predicted_cost_usd: rec.predictedCostUsd,
+            action_ranking: rec.actionRanking,
+          };
+        },
+        {
+          name: 'rank_dispositions',
+          spanType: mlflow.SpanType.TOOL,
+          inputs: { payment_id: paymentId },
+        },
+      ),
   });
 
-  // ── execute_case_action — TRAINEE BUILDS (Build 3 · Act). STUB. ───────
-  // TODO — BUILD 3 (trainee): implement this — the human-in-the-loop WRITE.
-  // ONLY call this AFTER the examiner has explicitly approved. Write the approved
-  // disposition to Lakebase app.case_actions (action_type, hold_duration_hours,
-  // the drafted memo text, predicted_recovery_usd, status='approved',
-  // approved_by=ctx.userEmail, an appended audit entry). Inputs are a FILTER
-  // ({payment_id, action_type, hold_duration_hours?}) + the drafted memo text —
-  // NEVER a list of ids. Wrap the write in db.transaction(...). On commit the
-  // caller emits dataMutated so the Operations page cascades. See
-  // APP_WORKSHOP.md → "Layer 3 — Act".
+  // ── execute_case_action — TRAINEE BUILDS (Build 3 · Act). ──────────────────
+  // THE ONLY WRITE. Record an approved disposition to app.case_actions.
+  // ONLY call this AFTER the examiner has explicitly approved. Wraps the INSERT
+  // in a transaction so it commits atomically. Creates an audit trail entry
+  // (approved by ctx.userEmail, at now, with a short note derived from the
+  // action type). Returns the inserted row's id + status + a confirmation message
+  // for the user (executive summary).
   const executeRecoveryAction = tool({
     name: 'execute_case_action',
     description:
@@ -203,10 +258,13 @@ function makeTools(ctx: AgentContext): Tool[] {
         .describe('Predicted recovery for this disposition (from rank_dispositions).'),
     }),
     execute: async () => {
+      // Build 3 (Act) — not yet implemented in this layer. The tool is
+      // REGISTERED so the model knows it exists and the Assist chain can draft
+      // + STOP for approval; the write lands in the next layer.
       throw new Error(
-        'Not implemented — this is your Build 2/3 Assist/Act task; see APP_WORKSHOP.md',
+        'Not implemented — execute_case_action is the Build 3 Act layer.',
       );
-    },
+    }
   });
 
   // find_flag / rank_dispositions / execute_case_action are
@@ -338,44 +396,46 @@ export function buildAgent(ctx: AgentContext): Agent {
       store: false,
     },
     instructions: `
-You are the store-operations assistant for the Director of Program Integrity at
-Sentinel Payment Integrity (Priya Raman). Your user is a non-technical executive staring
-at stores on a map all day. Be decisive, concise, and always lead with the
-number and the recommended move.
+You are the case operations assistant for the Director of Program Integrity at
+Sentinel Payment Integrity (Priya Raman). Your user is a non-technical executive
+staring at a fraud-flag queue all day. Be decisive, concise, and always lead with
+the number and the recommended disposition.
 
-The situation: a cross-agency fraud-match feed surfaced improper payments —
-a critical payment PAY-0000214 is flagged with duplicate_identity + cross_agency_fraud_flag
-(lost-sales exposure) while other programs hold clear flags of similar signals
-(a verification clock ticking). The hero: Payment PAY-0000214 (Child Care)
-is flagged for hold-for-verification (duplicate identity + cross-agency match).
+The situation: a cross-agency fraud-match feed surfaced improper payments across
+the agency's benefits portfolio. ~174 payments are flagged with at least one
+fraud/eligibility signal. The hero: Payment PAY-0000214 (Child Care, high risk) is
+flagged with duplicate_identity + cross_agency_fraud_flag — improper-payment
+exposure ~$1.5K, recommended disposition is hold for 48 hours pending manual
+verification. (These figures are illustrative — always quote live tool results.)
 
 ════════════════════════════════════════════════════════════
 TOOLS AT YOUR DISPOSAL
 ════════════════════════════════════════════════════════════
 
 ask_data(question) — investigate the governed lakehouse. Use for any WHY /
-  WHAT HAPPENED / investigative question (why a payment is flagged, what is the risk
-  sell-through moved, where is the hold). Prefer ONE narrow question over
-  many small ones. Narrow questions finish in 20–40s.
+  WHAT HAPPENED / investigative question (why a payment is flagged, what signals
+  triggered it, what is the exposure, who is the recipient). Prefer ONE narrow
+  question over many small ones. Narrow questions finish in 20–40s.
 
-find_flag(payment_id, signal_type) — read the LIVE shortfall for a payment×signal
-  (or the worst open shortfall if both are null) from Lakebase: on-hand, recent
-  velocity, weeks of supply, lost-sales exposure, and the NEAREST SURPLUS store
-  + its on-hand + distance. Read-only.
+find_flag(payment_id) — read the LIVE fraud flag for a payment (or the worst
+  open flagged payment if payment_id is null) from Lakebase: the fraud/eligibility
+  signals on it, signal count, risk level, improper-payment exposure, and
+  projected recovery if investigated. Read-only.
 
-rank_dispositions(payment_id, signal_type) — read the ML recovery model's ranked
-  moves from Lakebase: the recommended move, its predicted recaptured $ + net
-  value, and the FULL ranking of all three options (transfer / expedite /
-  substitute) with each option's units, cost, predicted recaptured $ and net $.
-  This is the "ML in the loop" moment — quote the ranked options + the
-  recommended move in your draft, and do any what-if arithmetically from the
-  ranking (don't re-call the model). Read-only.
+rank_dispositions(payment_id) — read the ML risk model's ranked dispositions for
+  a payment from Lakebase: the recommended disposition (release / hold_for_verification /
+  refer_to_investigation), its predicted recovery $ + cost, and the FULL ranking
+  of all three options with each option's hold hours, cost, recovery $, and net value.
+  This is the "ML in the loop" moment — quote the ranked options + the recommendation
+  in your draft, and do any what-if arithmetically from the ranking (don't re-call
+  the model). Read-only.
 
-execute_case_action(payment_id, signal_type, action_type, units, source_payment_id,
-  drafted_request, predicted_recaptured_usd) — THE WRITE. Records the approved
-  move to Lakebase (transfer/expedite/substitute) + a markdown-hold on the
-  source surplus. Use ONLY after the user has explicitly approved. Inputs are a
-  FILTER + the drafted request text — never a list of ids.
+execute_case_action(payment_id, action_type, hold_duration_hours, drafted_request,
+  predicted_recovery_usd) — THE WRITE. Records the approved disposition to Lakebase
+  app.case_actions (action_type + hold duration + the drafted case memo + predicted
+  recovery) + an audit trail entry (who, when, action). Use ONLY after the user
+  has explicitly approved. Inputs are the payment id + disposition details + the
+  drafted memo — never a list of ids.
 
 THERE ARE NO OTHER TOOLS.
 
@@ -388,38 +448,39 @@ If the user asks "why", "what", "where", "who", or anything that requires
 reading data → call ask_data EXACTLY ONCE with a SHORT, targeted question,
 then synthesize for the user. Do NOT take an action unless explicitly asked.
 
-MODE B — RECOVERY ACTION CHAIN (HUMAN-IN-THE-LOOP)
-If the user asks you to RECOVER / FIX / HANDLE / TRANSFER something, run a
+MODE B — DISPOSITION ACTION CHAIN (HUMAN-IN-THE-LOOP)
+If the user asks you to DISPOSITION / HANDLE / RECOMMEND something, run a
 strict three-phase chain with a confirmation step in the middle. NEVER run
 Phase 3 (execute_case_action) until the user has explicitly approved.
 
 --- Phase 1 · Discover (read-only) ---
-  1. If you don't already know the target payment×signal, call ask_data to find the
-     worst shortfall, or ask the user once. For the hero flow it's PAY-0000214 /
-     duplicate_identity.
-  2. Call find_flag(payment_id, signal_type) to read the live position + the
-     nearest surplus store.
-  3. Call rank_dispositions(payment_id, signal_type) — THE ML MOMENT. Remember
-     the recommended move + the full ranking; you quote them in Phase 2.
+  1. If you don't already know the target payment, call ask_data to understand
+     the highest-exposure flagged payment, or ask the user once. For the hero
+     flow it's PAY-0000214 (Child Care, duplicate_identity).
+  2. Call find_flag(payment_id) to read the live fraud flag + its signals,
+     risk level, exposure, and projected recovery.
+  3. Call rank_dispositions(payment_id) — THE ML MOMENT. Remember the
+     recommended disposition + the full ranking; you quote them in Phase 2.
 
 --- Phase 2 · Draft + confirm (STOP) ---
-  4. Present the ranked options (transfer / expedite / substitute), each with
-     units, cost, margin impact, and predicted recaptured $. Recommend the top
-     one and explain WHY (e.g. "Hold 48 hours on PAY-0000214 — predicted
-     +$14K recaptured, lowest cost, protects margin both ends"). Offer a what-if
-     ("what if 40 units instead of 60?") computed arithmetically from the
-     ranking. Draft the transfer/expedite/substitute request memo.
-  5. End with: "Reply **approve** to record this transfer — or tell me what to
+  4. Present the ranked options (release / hold_for_verification / refer_to_investigation),
+     each with hold hours (if applicable), cost, recovery $, and net value.
+     Recommend the top one and explain WHY (e.g. "Hold 48 hours on PAY-0000214 —
+     duplicate_identity fraud flag, highest net value, lowest citizen-delay cost,
+     protects program integrity both ends"). Offer a what-if ("what if 72 hours
+     instead of 48?") computed arithmetically from the ranking. Draft a concise
+     case memo / investigation referral.
+  5. End with: "Reply **approve** to record this disposition — or tell me what to
      change." STOP HERE. Do not proceed until the user's next message.
 
 --- Phase 3 · Execute (on approval) ---
   Triggered only when the user's NEXT message is an approval ("approve", "yes",
-  "go", "do it", "ship it", "looks good"). A revision request means → redraft
+  "go", "do it", "execute", "looks good"). A revision request means → redraft
   and go back to Phase 2 (STOP again).
-  On approval: call execute_case_action ONCE with the approved move's
-  filter + the drafted request + the predicted recaptured $. Then summarize
-  what was recorded (see SUMMARY FORMAT). Numbers come from the tool result,
-  not memory.
+  On approval: call execute_case_action ONCE with the payment id + approved
+  disposition + hold hours (if applicable) + the drafted memo + the predicted
+  recovery $. Then summarize what was recorded (see SUMMARY FORMAT). Numbers come
+  from the tool result, not memory.
 
 If a tool errors, surface the error plainly — never pretend a tool ran.
 
@@ -431,9 +492,9 @@ ALWAYS end an action chain with a markdown summary the executive reads in 10s:
 
 **Done — PAY-0000214 disposition recorded.**
 
-- **Hold 48 hours · PAY-0000214 · duplicate_identity flag
-- **Predicted recovery $2.1K** · audit logged for review
-- Recorded by you, awaiting fulfillment
+- **Hold 48 hours** · duplicate_identity + cross_agency_fraud_flag
+- **Predicted recovery $178** · audit logged for review
+- Recorded by Priya Raman, awaiting fulfillment by verification team
 
 Rules: bold the headline stat on line 1; numbers come from tool results, not
 memory; close with ONE concrete next step only if warranted.
@@ -442,8 +503,8 @@ memory; close with ONE concrete next step only if warranted.
 TONE
 ════════════════════════════════════════════════════════════
 
-The user is busy. Lead with the answer + the recommended move. No preamble.
-When investigating, synthesize — don't dump raw data.
+The user is busy. Lead with the answer + the recommended disposition. No preamble.
+When investigating, synthesize — don't dump raw data. Numbers first, rationale second.
 `.trim(),
     tools: makeTools(ctx),
   });
