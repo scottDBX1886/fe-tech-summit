@@ -9,7 +9,7 @@ import 'dotenv/config';
 import { writeFileSync } from 'node:fs';
 import { createApp, server, lakebase, analytics } from '@databricks/appkit';
 import { createDb } from '../server/db/index.js';
-import { getOpenFlag, getPayment, getRecommendation } from '../server/db/queries/cases.js';
+import { getOpenFlag, getPayment, getRecommendation, searchPlaybooks } from '../server/db/queries/cases.js';
 
 const OUT = '../submission2';
 const HERO = 'PAY-0000214';
@@ -27,6 +27,14 @@ await createApp({
 
     const top = rec.actionRanking.find((o) => o.disposition === rec.recommendedDisposition)!;
     const refer = rec.actionRanking.find((o) => o.disposition === 'refer_to_investigation')!;
+
+    // RETRIEVE governing playbooks from the Build-1 Lakebase Search index (FTS).
+    const playbookQuery = 'duplicate identity cross agency fraud match high risk';
+    const playbooks = await searchPlaybooks(db, playbookQuery, {
+      signalType: 'duplicate_identity',
+      limit: 3,
+    });
+    const primary = playbooks[0];
 
     // ── Interaction 1: EXPLANATION (why is PAY-0000214 flagged?) ──
     const explanation =
@@ -50,6 +58,12 @@ await createApp({
       `Net delta = ${usd(top.predictedNetValueUsd - refer.predictedNetValueUsd)} in favor of the hold. ` +
       `Recommendation stands: hold ${rec.recommendedHoldHours}h for verification.`;
 
+    const retrievalResponse = primary
+      ? `Retrieved ${playbooks.length} governing playbook(s) from the Build-1 Lakebase Search index ` +
+        `(public.reference_playbooks, Postgres full-text search). Primary: **${primary.title}** ` +
+        `(${primary.signalType}) — cite ${primary.regulatoryCite}. Verification steps: ${primary.verificationSteps}`
+      : 'No playbook matched in the Lakebase Search index.';
+
     const lines = [
       {
         ts: new Date().toISOString(),
@@ -66,6 +80,23 @@ await createApp({
         tools_called: ['(arithmetic from rank_dispositions.action_ranking — no model re-call)'],
         tool_data: { action_ranking: rec.actionRanking },
         response: whatif,
+      },
+      {
+        ts: new Date().toISOString(),
+        kind: 'retrieval',
+        request: 'Draft the case memo for PAY-0000214, grounded in the governing policy.',
+        tools_called: [`search_playbooks(query="${playbookQuery}", signal_type="duplicate_identity")`],
+        source: 'Build-1 Lakebase Search index — public.reference_playbooks.search_vector (tsvector, Postgres FTS)',
+        tool_data: {
+          playbooks: playbooks.map((p) => ({
+            playbook_id: p.playbookId,
+            signal_type: p.signalType,
+            title: p.title,
+            regulatory_cite: p.regulatoryCite,
+            rank: p.rank,
+          })),
+        },
+        response: retrievalResponse,
       },
     ];
     writeFileSync(`${OUT}/assist_log.jsonl`, lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
@@ -99,11 +130,24 @@ ${rec.actionRanking
   )
   .join('\n')}
 
+## Governing policy (retrieved from the Build-1 Lakebase Search index)
+_Source: \`public.reference_playbooks\` (Postgres full-text search over \`search_vector\`) — not a separate vector store._
+${playbooks
+  .map(
+    (p) =>
+      `### ${p.title} (${p.signalType})\n` +
+      `- **Guidance:** ${p.guidanceText}\n` +
+      `- **Verification steps:** ${p.verificationSteps}\n` +
+      `- **Regulatory citation:** ${p.regulatoryCite}`,
+  )
+  .join('\n\n')}
+
 ## Recommendation
 Hold ${rec.recommendedHoldHours} hours for identity verification against the
-cross-agency match. It maximizes net value (${usd(top.predictedNetValueUsd)})
-at the lowest citizen-delay cost, protecting program integrity without an
-unnecessary investigation referral.
+cross-agency match, following the verification steps above${primary ? ` (${primary.title}, ${primary.regulatoryCite})` : ''}.
+It maximizes net value (${usd(top.predictedNetValueUsd)}) at the lowest
+citizen-delay cost, protecting program integrity without an unnecessary
+investigation referral.
 
 ## Action taken
 Recorded to \`app.case_actions\` (id \`5a1a8185-9dce-4c57-b64b-99abd8af0c66\`),

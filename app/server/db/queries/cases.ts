@@ -581,3 +581,91 @@ export async function recordCaseAction(
     return toCaseAction(row);
   });
 }
+
+// ============================================================================
+// Build-1 Lakebase Search index — reference-playbook retrieval (Assist/RAG).
+//
+// The Build-1 pipeline lands governed disposition playbooks in Lakebase Postgres
+// as `public.reference_playbooks`, indexed for FULL-TEXT SEARCH via a `tsvector`
+// column (`search_vector`). This IS the "Lakebase Search index" — retrieval runs
+// in-database against the same pool the app already uses, NOT a separate vector
+// store. The agent's `search_playbooks` tool calls this so the drafted memo can
+// cite the governing guidance, verification steps, and regulatory citation.
+// ============================================================================
+
+export type ReferencePlaybook = {
+  playbookId: number;
+  signalType: string | null;
+  riskLevel: string | null;
+  title: string | null;
+  guidanceText: string | null;
+  verificationSteps: string | null;
+  regulatoryCite: string | null;
+  rank: number;
+};
+
+/**
+ * Retrieve the most relevant reference playbooks from the Build-1 Lakebase
+ * Search index (`public.reference_playbooks.search_vector`, a Postgres tsvector)
+ * for a free-text query, optionally boosted toward a specific signal_type.
+ *
+ * Uses `plainto_tsquery` (tolerant of arbitrary phrasing) `@@` the indexed
+ * `search_vector`, ranked by `ts_rank`. When `signalType` is given, an exact
+ * signal_type match on that playbook is unioned in first so the governing
+ * playbook for the flag is always surfaced even if the free-text score is low.
+ */
+export async function searchPlaybooks(
+  db: AppDb,
+  query: string,
+  opts: { signalType?: string | null; limit?: number } = {},
+): Promise<ReferencePlaybook[]> {
+  const limit = opts.limit ?? 3;
+  // Build an OR (disjunction) tsquery from the query's alphanumeric tokens, so a
+  // multi-signal query ("duplicate identity cross agency fraud") retrieves EVERY
+  // relevant playbook ranked by relevance — plainto_tsquery ANDs terms, which is
+  // too strict here (no single playbook contains all signal words). Tokens are
+  // sanitized to [a-z0-9] and joined with ' | ', so the string is injection-safe
+  // before it reaches to_tsquery. Empty query → match nothing (the signal_type
+  // pin below still surfaces the governing playbook).
+  const tokens = query
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length > 2);
+  const tsquery = tokens.length ? tokens.join(' | ') : 'zzzznomatch';
+  const signalFilter = opts.signalType
+    ? sql`OR signal_type = ${opts.signalType}`
+    : sql``;
+  const res = await db.execute(sql`
+    SELECT playbook_id, signal_type, risk_level, title, guidance_text,
+           verification_steps, regulatory_cite,
+           ts_rank(search_vector, to_tsquery('english', ${tsquery})) AS rank
+    FROM public.reference_playbooks
+    WHERE search_vector @@ to_tsquery('english', ${tsquery})
+      ${signalFilter}
+    ORDER BY
+      CASE WHEN signal_type = ${opts.signalType ?? ''} THEN 0 ELSE 1 END,
+      rank DESC
+    LIMIT ${limit}
+  `);
+  return (
+    res.rows as Array<{
+      playbook_id: number;
+      signal_type: string | null;
+      risk_level: string | null;
+      title: string | null;
+      guidance_text: string | null;
+      verification_steps: string | null;
+      regulatory_cite: string | null;
+      rank: number | string | null;
+    }>
+  ).map((r) => ({
+    playbookId: Number(r.playbook_id),
+    signalType: r.signal_type,
+    riskLevel: r.risk_level,
+    title: r.title,
+    guidanceText: r.guidance_text,
+    verificationSteps: r.verification_steps,
+    regulatoryCite: r.regulatory_cite,
+    rank: num(r.rank) ?? 0,
+  }));
+}

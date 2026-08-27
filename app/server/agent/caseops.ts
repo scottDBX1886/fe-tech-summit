@@ -47,13 +47,16 @@ import { authHeaders } from '../lib/auth.js';
 import type { AppDb } from '../db/index.js';
 // The Lakebase read + write helpers the case-ops tools wire up. Reads are the
 // synced read-only mirrors (open_queue, payment_position,
-// disposition_recommendations); recordCaseAction is the ONLY write.
+// disposition_recommendations) + the Build-1 Lakebase Search index
+// (searchPlaybooks → public.reference_playbooks full-text search);
+// recordCaseAction is the ONLY write.
 import {
   getOpenFlag,
   worstFlag,
   getPayment,
   getRecommendation,
   recordCaseAction,
+  searchPlaybooks,
 } from '../db/queries/cases.js';
 import type { OpenFlag } from '../db/queries/cases.js';
 // The data-backend helpers. Both are config-driven and share the same
@@ -231,6 +234,58 @@ function makeTools(ctx: AgentContext): Tool[] {
       ),
   });
 
+  // ── search_playbooks — RETRIEVAL from the Build-1 Lakebase Search index. ────
+  // RAG for the memo: retrieve the governing disposition playbook(s) from
+  // public.reference_playbooks via Postgres FULL-TEXT SEARCH (the tsvector
+  // "Lakebase Search index") — NOT a separate vector store. The agent quotes
+  // the retrieved guidance, verification steps, and regulatory citation in the
+  // drafted memo so the recommendation is grounded in governed policy.
+  const searchReferencePlaybooks = tool({
+    name: 'search_playbooks',
+    description:
+      "Retrieve governing disposition playbooks from the Build-1 Lakebase Search index (public.reference_playbooks, Postgres full-text search) for a payment's fraud/eligibility signals. Returns each playbook's title, guidance, verification steps, and regulatory citation. Call this BEFORE drafting a memo so the draft cites governed policy (guidance + verification_steps + regulatory_cite). Pass the signal names / risk as the query, and the primary signal_type to pin the exact playbook. Read-only.",
+    parameters: z.object({
+      query: z
+        .string()
+        .describe(
+          'Free-text search over the playbook index, e.g. "duplicate identity cross agency fraud high risk". Use the flag\'s signal names + risk level.',
+        ),
+      signal_type: z
+        .string()
+        .nullable()
+        .describe(
+          'Primary signal_type to pin the governing playbook (e.g. duplicate_identity, cross_agency_fraud_flag). Null to rank purely by text relevance.',
+        ),
+    }),
+    execute: async ({ query, signal_type: signalType }) =>
+      mlflow.withSpan(
+        async () => {
+          const playbooks = await searchPlaybooks(ctx.db, query, {
+            signalType,
+            limit: 3,
+          });
+          if (!playbooks.length) return { found: false, playbooks: [] };
+          return {
+            found: true,
+            playbooks: playbooks.map((p) => ({
+              playbook_id: p.playbookId,
+              signal_type: p.signalType,
+              risk_level: p.riskLevel,
+              title: p.title,
+              guidance_text: p.guidanceText,
+              verification_steps: p.verificationSteps,
+              regulatory_cite: p.regulatoryCite,
+            })),
+          };
+        },
+        {
+          name: 'search_playbooks',
+          spanType: mlflow.SpanType.TOOL,
+          inputs: { query, signal_type: signalType },
+        },
+      ),
+  });
+
   // ── execute_case_action — TRAINEE BUILDS (Build 3 · Act). ──────────────────
   // THE ONLY WRITE. Record an approved disposition to app.case_actions.
   // ONLY call this AFTER the examiner has explicitly approved. Wraps the INSERT
@@ -317,7 +372,12 @@ function makeTools(ctx: AgentContext): Tool[] {
   // registered so the MODEL knows they exist (and the trainee sees them in
   // the tool list) — they throw until implemented. ask_data is registered
   // only when a backend is configured.
-  const tools: Tool[] = [findShortfall, rankRecoveryMoves, executeRecoveryAction];
+  const tools: Tool[] = [
+    findShortfall,
+    rankRecoveryMoves,
+    searchReferencePlaybooks,
+    executeRecoveryAction,
+  ];
   if (ctx.masEndpointName || ctx.genieSpaceId) {
     tools.unshift(askData);
   }
@@ -476,6 +536,14 @@ rank_dispositions(payment_id) — read the ML risk model's ranked dispositions f
   in your draft, and do any what-if arithmetically from the ranking (don't re-call
   the model). Read-only.
 
+search_playbooks(query, signal_type) — RETRIEVE the governing disposition
+  playbook(s) from the Build-1 Lakebase Search index (public.reference_playbooks,
+  Postgres full-text search — NOT a separate vector store). Returns each
+  playbook's guidance, verification steps, and regulatory citation. Call this
+  BEFORE drafting a memo, passing the flag's signal names + risk as the query and
+  the primary signal_type. Quote the retrieved verification steps + regulatory
+  cite in the draft so the recommendation is grounded in governed policy. Read-only.
+
 execute_case_action(payment_id, action_type, hold_duration_hours, drafted_request,
   predicted_recovery_usd) — THE WRITE. Records the approved disposition to Lakebase
   app.case_actions (action_type + hold duration + the drafted case memo + predicted
@@ -507,16 +575,22 @@ Phase 3 (execute_case_action) until the user has explicitly approved.
      risk level, exposure, and projected recovery.
   3. Call rank_dispositions(payment_id) — THE ML MOMENT. Remember the
      recommended disposition + the full ranking; you quote them in Phase 2.
+  4. Call search_playbooks(query, signal_type) — RETRIEVE the governing
+     playbook from the Build-1 Lakebase Search index (query = the flag's signal
+     names + risk level; signal_type = the primary signal). Remember its
+     verification steps + regulatory citation; you cite them in the memo.
 
 --- Phase 2 · Draft + confirm (STOP) ---
-  4. Present the ranked options (release / hold_for_verification / refer_to_investigation),
+  5. Present the ranked options (release / hold_for_verification / refer_to_investigation),
      each with hold hours (if applicable), cost, recovery $, and net value.
      Recommend the top one and explain WHY (e.g. "Hold 48 hours on PAY-0000214 —
      duplicate_identity fraud flag, highest net value, lowest citizen-delay cost,
      protects program integrity both ends"). Offer a what-if ("what if 72 hours
      instead of 48?") computed arithmetically from the ranking. Draft a concise
-     case memo / investigation referral.
-  5. End with: "Reply **approve** to record this disposition — or tell me what to
+     case memo / investigation referral that CITES the retrieved playbook's
+     verification steps + regulatory citation (from search_playbooks) — the memo
+     must be grounded in the governed policy, not invented.
+  6. End with: "Reply **approve** to record this disposition — or tell me what to
      change." STOP HERE. Do not proceed until the user's next message.
 
 --- Phase 3 · Execute (on approval) ---
