@@ -37,6 +37,7 @@ import {
   Agent,
   run,
   setDefaultOpenAIClient,
+  setOpenAIAPI,
   setTracingDisabled,
 } from '@openai/agents';
 import type { Tool } from '@openai/agents';
@@ -56,6 +57,7 @@ import {
   getPayment,
   getRecommendation,
   recordCaseAction,
+  recordGuardrailBlock,
   searchPlaybooks,
 } from '../db/queries/cases.js';
 import type { OpenFlag } from '../db/queries/cases.js';
@@ -65,6 +67,7 @@ import type { OpenFlag } from '../db/queries/cases.js';
 // preserves the template's MAS-OR-Genie flexibility exactly.
 import { callMasEndpoint } from './tools/mas.js';
 import { callGenieSpace } from './tools/genie.js';
+import { enforceNoAllDataRead, AllDataReadBlockedError } from './guardrail.js';
 export type { ToolProgressEvent } from './tools/types.js';
 
 /** Captured detail of the last failing call to the model serving endpoint. */
@@ -108,6 +111,30 @@ export type AgentContext = {
 // Use the `loggedTool` wrapper (imported as `tool`), not the raw SDK `tool`.
 // ────────────────────────────────────────────────────────────────────────────
 function makeTools(ctx: AgentContext): Tool[] {
+  // ── all-data-read guardrail (Build 3 · Unity Gateway) ─────────────────────
+  // Runs at the top of every tool that turns free-form input into a Lakebase
+  // query. Rejects "read everything" attempts BEFORE any SQL executes — the
+  // real "prevent all Lakebase data from being read" control (the gateway
+  // guardrail only sees prompt text, never the SQL). On a block: record an
+  // audit row (best-effort) and throw so the model gets a clear refusal.
+  const guardData = async (toolName: string, input: string): Promise<void> => {
+    try {
+      enforceNoAllDataRead(input);
+    } catch (e) {
+      if (e instanceof AllDataReadBlockedError) {
+        await recordGuardrailBlock(ctx.db, {
+          tool: toolName,
+          blockedInput: input,
+          matchedPhrase: e.matched,
+          attemptedBy: ctx.userEmail,
+        }).catch(() => {
+          /* audit is best-effort; never mask the refusal */
+        });
+      }
+      throw e;
+    }
+  };
+
   // ── ask_data — SHIPS WORKING. Config-driven MAS-OR-Genie. ─────────────────
   // Delegates to the MAS endpoint if one is configured, else the Genie space.
   // Both helpers return {answer, trace_id} and stream progress via
@@ -126,10 +153,13 @@ function makeTools(ctx: AgentContext): Tool[] {
     }),
     execute: async ({ question }) =>
       mlflow.withSpan(
-        async () =>
-          ctx.masEndpointName
+        async () => {
+          // Guardrail: block all-data reads before any SQL is generated/run.
+          await guardData('ask_data', question);
+          return ctx.masEndpointName
             ? callMasEndpoint(ctx, ctx.masEndpointName, question)
-            : callGenieSpace(ctx, ctx.genieSpaceId, question),
+            : callGenieSpace(ctx, ctx.genieSpaceId, question);
+        },
         {
           name: 'ask_data',
           spanType: mlflow.SpanType.TOOL,
@@ -260,6 +290,8 @@ function makeTools(ctx: AgentContext): Tool[] {
     execute: async ({ query, signal_type: signalType }) =>
       mlflow.withSpan(
         async () => {
+          // Guardrail: block all-data reads before the retrieval query runs.
+          await guardData('search_playbooks', query);
           const playbooks = await searchPlaybooks(ctx.db, query, {
             signalType,
             limit: 3,
@@ -485,9 +517,16 @@ export async function configureAgentsSdk(ctx: AgentContext): Promise<void> {
     },
   });
   setDefaultOpenAIClient(client);
-  // Responses API (the SDK's default — we leave setOpenAIAPI alone).
-  // Keep `agentModel` on `databricks-gpt-5-4` or a newer Responses-capable
-  // GPT (needs `openai/v1/responses`). Claude/non-Responses models 400.
+  // Build 3 · Unity Gateway: route through the governed endpoint via the
+  // Chat Completions API (`/invocations`), NOT the Responses API. The governed
+  // gateway (sentinel-unity-gateway) is an external-model endpoint proxying
+  // databricks-gpt-5-4 — it speaks chat/completions and supports AI Gateway
+  // guardrails + the inference table. The Responses API is (a) not exposed on
+  // external-model endpoints and (b) unsupported by AI Gateway V1 guardrails,
+  // so the app must use chat_completions to route through governance.
+  // The stream handler's primary text path (output_text_delta) works for both
+  // APIs; only Responses-native reasoning summaries go quiet on chat.
+  setOpenAIAPI('chat_completions');
   setTracingDisabled(true); // disable OpenAI's tracing backend; we use MLflow
 }
 
@@ -495,12 +534,11 @@ export function buildAgent(ctx: AgentContext): Agent {
   return new Agent({
     name: 'CaseOps',
     model: ctx.model,
-    modelSettings: {
-      reasoning: { effort: 'low', summary: 'auto' },
-      // Databricks' gateway doesn't fully support the Responses server-side
-      // state backend; stateless runs work fine.
-      store: false,
-    },
+    // NOTE: `reasoning` / `store` are Responses-API model settings. We now route
+    // through the governed gateway via Chat Completions (see configureAgentsSdk),
+    // which doesn't accept them, so they're intentionally omitted. Chat models
+    // don't emit reasoning summaries — text + tool-calls stream normally.
+    modelSettings: {},
     instructions: `
 You are the case operations assistant for the Director of Program Integrity at
 Sentinel Payment Integrity (Priya Raman). Your user is a non-technical executive

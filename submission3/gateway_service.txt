@@ -1,0 +1,109 @@
+================================================================================
+Build 3 · Unity Gateway — Model service + inference table creation
+Evidence #1: gateway_service.txt
+================================================================================
+
+Workspace : https://fe-sandbox-serverless-scottj-techsummit.cloud.databricks.com
+Account   : 0d26daa6-5e44-4c97-a497-ef015f91254a
+Profile   : fe-tech
+Endpoint  : sentinel-unity-gateway   (id 5c88eac61e0b46938d3a88217499a63a)
+Inference : serverless_scottj_techsummit_catalog.unity_gateway.sentinel_app_payload
+
+--------------------------------------------------------------------------------
+WHY AN EXTERNAL-MODEL ENDPOINT (design note)
+--------------------------------------------------------------------------------
+The app's LLM is GPT-5.4, exposed in this workspace as the pay-per-token
+foundation model `system.ai.databricks-gpt-5-4`. Pay-per-token foundation
+models cannot be re-provisioned as your own served entity (attempting to serve
+`system.ai.*` with a workload_size yields a completions-only, broken schema).
+
+The supported way to create a SELF-OWNED, governed model service for that LLM —
+one that carries its own AI Gateway inference table + guardrails — is an
+EXTERNAL-MODEL endpoint (provider `databricks-model-serving`) that proxies the
+existing foundation endpoint. This is `sentinel-unity-gateway`. The app routes
+all of its LLM calls through it (see step 5), so every call is governed + logged
+to the inference table below.
+
+The proxy needs a Databricks API token to call the target endpoint; we store a
+PAT in a secret scope and reference it (never inline plaintext).
+
+================================================================================
+STEP 3a — Create the proxy token + secret scope (one time)
+================================================================================
+# Personal access token used by the external-model proxy to call the FM endpoint
+databricks tokens create \
+  --lifetime-seconds 7776000 \
+  --comment "sentinel-unity-gateway proxy token (Build 3)" \
+  --profile fe-tech
+
+# Store it in a secret scope (referenced by the endpoint, not inlined)
+databricks secrets create-scope sentinel-gateway --profile fe-tech
+databricks secrets put-secret sentinel-gateway proxy-token \
+  --string-value "<TOKEN_VALUE>" --profile fe-tech
+
+================================================================================
+STEP 3b — Create the schema that holds the inference table
+================================================================================
+databricks schemas create unity_gateway serverless_scottj_techsummit_catalog \
+  --profile fe-tech \
+  --comment "Build 3 Unity Gateway: AI Gateway inference tables for governed LLM calls"
+
+================================================================================
+STEP 3c — Create the governed model service (external-model endpoint)
+================================================================================
+# endpoint.json
+{
+  "name": "sentinel-unity-gateway",
+  "config": {
+    "served_entities": [
+      {
+        "name": "sentinel-gpt-5-4",
+        "external_model": {
+          "name": "databricks-gpt-5-4",
+          "provider": "databricks-model-serving",
+          "task": "llm/v1/chat",
+          "databricks_model_serving_config": {
+            "databricks_workspace_url": "https://fe-sandbox-serverless-scottj-techsummit.cloud.databricks.com",
+            "databricks_api_token": "{{secrets/sentinel-gateway/proxy-token}}"
+          }
+        }
+      }
+    ]
+  }
+}
+
+databricks serving-endpoints create --profile fe-tech --json @endpoint.json
+
+================================================================================
+STEP 3d — Attach the inference table + usage tracking (AI Gateway)
+   (guardrails are attached in Step 4; put-ai-gateway REPLACES the whole block,
+    so the final combined payload is shown in step 4.)
+================================================================================
+# ai_gateway_inference_only.json
+{
+  "usage_tracking_config": { "enabled": true },
+  "inference_table_config": {
+    "enabled": true,
+    "catalog_name": "serverless_scottj_techsummit_catalog",
+    "schema_name": "unity_gateway",
+    "table_name_prefix": "sentinel_app"
+  }
+}
+
+databricks serving-endpoints put-ai-gateway sentinel-unity-gateway \
+  --profile fe-tech --json @ai_gateway_inference_only.json
+
+# Result: inference table provisioned at
+#   serverless_scottj_techsummit_catalog.unity_gateway.sentinel_app_payload
+
+================================================================================
+VERIFICATION
+================================================================================
+# Endpoint is READY and speaks chat:
+databricks serving-endpoints query sentinel-unity-gateway --profile fe-tech \
+  --json '{"messages":[{"role":"user","content":"Reply with exactly: gateway ok"}],"max_tokens":20}'
+# → "gateway ok"
+
+# Inference table exists:
+databricks tables list serverless_scottj_techsummit_catalog unity_gateway --profile fe-tech
+# → serverless_scottj_techsummit_catalog.unity_gateway.sentinel_app_payload  (MANAGED)

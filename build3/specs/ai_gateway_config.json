@@ -1,0 +1,19 @@
+{
+  "guardrails": {
+    "input": {
+      "pii": {
+        "behavior": "BLOCK"
+      },
+      "safety": true
+    }
+  },
+  "inference_table_config": {
+    "catalog_name": "serverless_scottj_techsummit_catalog",
+    "enabled": true,
+    "schema_name": "unity_gateway",
+    "table_name_prefix": "sentinel_app"
+  },
+  "usage_tracking_config": {
+    "enabled": true
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "sentinel-unity-gateway",
+  "config": {
+    "served_entities": [
+      {
+        "name": "sentinel-gpt-5-4",
+        "external_model": {
+          "name": "databricks-gpt-5-4",
+          "provider": "databricks-model-serving",
+          "task": "llm/v1/chat",
+          "databricks_model_serving_config": {
+            "databricks_workspace_url": "https://fe-sandbox-serverless-scottj-techsummit.cloud.databricks.com",
+            "databricks_api_token": "{{secrets/sentinel-gateway/proxy-token}}"
+          }
+        }
+      }
+    ]
+  }
+}

@@ -249,6 +249,32 @@ export const caseActions = appSchema.table(
 );
 
 // ============================================================================
+// Guardrail blocks — Build 3 · Unity Gateway. Append-only audit of app-layer
+// all-data-read blocks (the "prevent all Lakebase data from being read"
+// control). Each row is one rejected tool call: which tool, the offending
+// input, and the phrase that matched. Exported as evidence that the guardrail
+// actually fired (not just that it was configured).
+// ============================================================================
+export const guardrailBlocks = appSchema.table(
+  'guardrail_blocks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    // The agent tool whose input was blocked (e.g. 'ask_data', 'search_playbooks').
+    tool: text('tool').notNull(),
+    // The natural-language input that was rejected.
+    blockedInput: text('blocked_input').notNull(),
+    // The guardrail phrase that matched (why it was blocked).
+    matchedPhrase: text('matched_phrase').notNull(),
+    // OBO-stamped viewing user's email (who attempted it).
+    attemptedBy: text('attempted_by'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('guardrail_blocks_created_idx').on(t.createdAt)],
+);
+
+// ============================================================================
 // JSONB entry shapes
 // ============================================================================
 

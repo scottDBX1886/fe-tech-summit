@@ -1,0 +1,40 @@
+================================================================================
+Build 3 · Unity Gateway — $0.05 BUDGET BLOCK (fired)
+Evidence for submission #2 (budget block)
+================================================================================
+
+Budget: sentinel-unity-gateway $0.05 BLOCK (Build 3)
+  budget_configuration_id : 437c954c-f2c3-447d-873a-b9396de4600a
+  resource_type           : BUDGET_RESOURCE_TYPE_UNITY_AI_GATEWAY
+  threshold               : $0.05 (LIST_PRICE_DOLLARS_USD, MONTH, CUMULATIVE_SPENDING_EXCEEDED)
+  actions                 : BLOCK_USAGE + EMAIL_NOTIFICATION
+  scope                   : workspace_id 7474646890712007 (this workspace only)
+
+--------------------------------------------------------------------------------
+PHASE 1 — EMAIL NOTIFICATION (threshold crossed)
+--------------------------------------------------------------------------------
+Databricks Budget Notification email received:
+  Subject: "Databricks Budget Notification - sentinel-unity-gateway $0.05 BLOCK (Build 3)"
+  → fired the moment cumulative AI Gateway spend crossed $0.05.
+
+--------------------------------------------------------------------------------
+PHASE 2 — HARD BLOCK (calls rejected) — 403 PERMISSION_DENIED
+--------------------------------------------------------------------------------
+Once enforcement propagated, calls through the governed gateway are REJECTED.
+Captured from the CODING AGENT (Codex via ucode → ai-gateway/codex/v1), which
+proves the budget governs BOTH the app and the coding agent:
+
+  HTTP 403 Forbidden
+  {
+    "error_code": "PERMISSION_DENIED",
+    "message": "Budget \"sentinel-unity-gateway $0.05 BLOCK (Build 3)\"
+                (437c954c-f2c3-447d-873a-b9396de4600a) has reached its limit
+                of $0.05. To continue, contact an admin to increase the budget
+                or use a different budget."
+  }
+  url: https://fe-sandbox-serverless-scottj-techsummit.cloud.databricks.com/ai-gateway/codex/v1/responses
+  request_id: 48d174f6-c74c-4549-a156-d820f0ca8369
+
+This is the budget block firing on ALL AI resources routed through Unity Gateway
+(app + coding agent), exactly as required by "verifying ... budgets work for all
+AI resources."

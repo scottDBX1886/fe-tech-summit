@@ -583,6 +583,27 @@ export async function recordCaseAction(
 }
 
 // ============================================================================
+// Guardrail block audit — Build 3 · Unity Gateway.
+// Records one app-layer all-data-read block to app.guardrail_blocks. Best-effort:
+// the caller has already refused the tool call; a failure to log the audit row
+// must not mask the refusal, so callers wrap this and swallow errors.
+// ============================================================================
+export async function recordGuardrailBlock(
+  db: AppDb,
+  input: {
+    tool: string;
+    blockedInput: string;
+    matchedPhrase: string;
+    attemptedBy: string | null;
+  },
+): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO app.guardrail_blocks (tool, blocked_input, matched_phrase, attempted_by)
+    VALUES (${input.tool}, ${input.blockedInput}, ${input.matchedPhrase}, ${input.attemptedBy})
+  `);
+}
+
+// ============================================================================
 // Build-1 Lakebase Search index — reference-playbook retrieval (Assist/RAG).
 //
 // The Build-1 pipeline lands governed disposition playbooks in Lakebase Postgres

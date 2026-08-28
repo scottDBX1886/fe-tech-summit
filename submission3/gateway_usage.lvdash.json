@@ -1,0 +1,417 @@
+{
+  "datasets": [
+    {
+      "name": "ds_usage_by_endpoint",
+      "displayName": "Usage by endpoint (app / coding agent / MCP)",
+      "queryLines": [
+        "SELECT COALESCE(se.endpoint_name, 'unknown') AS endpoint_name,\n",
+        "       CASE\n",
+        "         WHEN se.endpoint_name = 'sentinel-unity-gateway' THEN 'App (Sentinel)'\n",
+        "         WHEN se.endpoint_name LIKE '%codex%' OR se.endpoint_name LIKE '%coding%' THEN 'Coding agent'\n",
+        "         WHEN se.endpoint_name LIKE '%slack%' OR se.endpoint_name LIKE '%mcp%' THEN 'MCP'\n",
+        "         ELSE 'Other / foundation' END AS resource_class,\n",
+        "       COUNT(*) AS calls,\n",
+        "       SUM(eu.input_token_count + eu.output_token_count) AS total_tokens\n",
+        "FROM system.serving.endpoint_usage eu\n",
+        "LEFT JOIN system.serving.served_entities se ON eu.served_entity_id = se.served_entity_id\n",
+        "WHERE eu.workspace_id = '7474646890712007' AND eu.request_time >= current_date() - 7\n",
+        "GROUP BY se.endpoint_name, 2\n",
+        "ORDER BY calls DESC"
+      ]
+    },
+    {
+      "name": "ds_daily_usage",
+      "displayName": "Daily usage trend",
+      "queryLines": [
+        "SELECT DATE_TRUNC('DAY', eu.request_time) AS day,\n",
+        "       COUNT(*) AS calls,\n",
+        "       SUM(eu.input_token_count + eu.output_token_count) AS total_tokens\n",
+        "FROM system.serving.endpoint_usage eu\n",
+        "WHERE eu.workspace_id = '7474646890712007' AND eu.request_time >= current_date() - 14\n",
+        "GROUP BY DATE_TRUNC('DAY', eu.request_time)\n",
+        "ORDER BY day"
+      ]
+    },
+    {
+      "name": "ds_governance_outcomes",
+      "displayName": "Governance outcomes (guardrail blocks)",
+      "queryLines": [
+        "SELECT CASE\n",
+        "         WHEN response LIKE '%input_guardrail_triggered%' THEN 'Guardrail blocked'\n",
+        "         WHEN status_code = 200 THEN 'Allowed'\n",
+        "         ELSE 'Other (4xx)' END AS outcome,\n",
+        "       COUNT(*) AS n\n",
+        "FROM serverless_scottj_techsummit_catalog.unity_gateway.sentinel_app_payload\n",
+        "GROUP BY 1\n",
+        "ORDER BY n DESC"
+      ]
+    },
+    {
+      "name": "ds_kpis",
+      "displayName": "KPIs",
+      "queryLines": [
+        "SELECT\n",
+        "  COUNT(*) AS total_calls,\n",
+        "  SUM(input_token_count + output_token_count) AS total_tokens,\n",
+        "  COUNT(DISTINCT requester) AS distinct_requesters\n",
+        "FROM system.serving.endpoint_usage\n",
+        "WHERE workspace_id = '7474646890712007' AND request_time >= current_date() - 7"
+      ]
+    },
+    {
+      "name": "ds_guardrail_kpi",
+      "displayName": "Guardrail block count",
+      "queryLines": [
+        "SELECT COUNT(*) AS guardrail_blocks\n",
+        "FROM serverless_scottj_techsummit_catalog.unity_gateway.sentinel_app_payload\n",
+        "WHERE response LIKE '%input_guardrail_triggered%'"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "page_main",
+      "displayName": "Unity Gateway Usage & Governance",
+      "layout": [
+        {
+          "widget": {
+            "name": "title",
+            "multilineTextboxSpec": {
+              "lines": [
+                "# Unity Gateway — Usage & Governance\n",
+                "Governed LLM traffic across the app, coding agent, and MCP · budgets + guardrails enforced via AI Gateway"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_calls",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_kpis",
+                  "fields": [
+                    {
+                      "name": "total_calls",
+                      "expression": "`total_calls`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "total_calls",
+                  "displayName": "Total governed calls (7d)"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_tokens",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_kpis",
+                  "fields": [
+                    {
+                      "name": "total_tokens",
+                      "expression": "`total_tokens`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "total_tokens",
+                  "displayName": "Total tokens (7d)"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 1,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_guardrail",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_guardrail_kpi",
+                  "fields": [
+                    {
+                      "name": "guardrail_blocks",
+                      "expression": "`guardrail_blocks`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "guardrail_blocks",
+                  "displayName": "Guardrail blocks"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 1,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "usage_by_resource",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_usage_by_endpoint",
+                  "fields": [
+                    {
+                      "name": "resource_class",
+                      "expression": "`resource_class`"
+                    },
+                    {
+                      "name": "sum(calls)",
+                      "expression": "SUM(`calls`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "resource_class",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Resource class"
+                },
+                "y": {
+                  "fieldName": "sum(calls)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Calls"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "governance_outcomes",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_governance_outcomes",
+                  "fields": [
+                    {
+                      "name": "outcome",
+                      "expression": "`outcome`"
+                    },
+                    {
+                      "name": "sum(n)",
+                      "expression": "SUM(`n`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "pie",
+              "encodings": {
+                "angle": {
+                  "fieldName": "sum(n)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Requests"
+                },
+                "color": {
+                  "fieldName": "outcome",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Outcome"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 4,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "daily_trend",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_daily_usage",
+                  "fields": [
+                    {
+                      "name": "day",
+                      "expression": "`day`"
+                    },
+                    {
+                      "name": "sum(calls)",
+                      "expression": "SUM(`calls`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "day",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Day"
+                },
+                "y": {
+                  "fieldName": "sum(calls)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Calls"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 10,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "endpoint_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_usage_by_endpoint",
+                  "fields": [
+                    {
+                      "name": "endpoint_name",
+                      "expression": "`endpoint_name`"
+                    },
+                    {
+                      "name": "resource_class",
+                      "expression": "`resource_class`"
+                    },
+                    {
+                      "name": "calls",
+                      "expression": "`calls`"
+                    },
+                    {
+                      "name": "total_tokens",
+                      "expression": "`total_tokens`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "endpoint_name",
+                    "displayName": "Endpoint"
+                  },
+                  {
+                    "fieldName": "resource_class",
+                    "displayName": "Resource class"
+                  },
+                  {
+                    "fieldName": "calls",
+                    "displayName": "Calls"
+                  },
+                  {
+                    "fieldName": "total_tokens",
+                    "displayName": "Tokens"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 15,
+            "width": 6,
+            "height": 6
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    }
+  ]
+}

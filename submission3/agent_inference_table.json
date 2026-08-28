@@ -1,0 +1,114 @@
+[
+  {
+    "endpoint_name": "(codex-gateway)",
+    "input_token_count": "0",
+    "output_token_count": "0",
+    "request_time": "2026-08-28T12:04:47.554Z",
+    "requester": "scott.johnson@databricks.com",
+    "status_code": "400"
+  },
+  {
+    "endpoint_name": "(codex-gateway)",
+    "input_token_count": "0",
+    "output_token_count": "0",
+    "request_time": "2026-08-28T12:04:26.675Z",
+    "requester": "scott.johnson@databricks.com",
+    "status_code": "400"
+  },
+  {
+    "endpoint_name": "(codex-gateway)",
+    "input_token_count": "0",
+    "output_token_count": "0",
+    "request_time": "2026-08-28T12:04:13.878Z",
+    "requester": "scott.johnson@databricks.com",
+    "status_code": "400"
+  },
+  {
+    "endpoint_name": "(codex-gateway)",
+    "input_token_count": "0",
+    "output_token_count": "0",
+    "request_time": "2026-08-28T12:04:13.203Z",
+    "requester": "scott.johnson@databricks.com",
+    "status_code": "400"
+  },
+  {
+    "endpoint_name": "(codex-gateway)",
+    "input_token_count": "0",
+    "output_token_count": "0",
+    "request_time": "2026-08-28T12:04:12.767Z",
+    "requester": "scott.johnson@databricks.com",
+    "status_code": "400"
+  },
+  {
+    "endpoint_name": "(codex-gateway)",
+    "input_token_count": "0",
+    "output_token_count": "0",
+    "request_time": "2026-08-28T12:04:12.333Z",
+    "requester": "scott.johnson@databricks.com",
+    "status_code": "400"
+  },
+  {
+    "endpoint_name": "(codex-gateway)",
+    "input_token_count": "0",
+    "output_token_count": "0",
+    "request_time": "2026-08-28T12:04:11.822Z",
+    "requester": "scott.johnson@databricks.com",
+    "status_code": "400"
+  },
+  {
+    "endpoint_name": "(codex-gateway)",
+    "input_token_count": "0",
+    "output_token_count": "0",
+    "request_time": "2026-08-28T12:04:11.181Z",
+    "requester": "scott.johnson@databricks.com",
+    "status_code": "400"
+  },
+  {
+    "endpoint_name": "(codex-gateway)",
+    "input_token_count": "0",
+    "output_token_count": "0",
+    "request_time": "2026-08-28T11:39:00.902Z",
+    "requester": "scott.johnson@databricks.com",
+    "status_code": "400"
+  },
+  {
+    "endpoint_name": "(codex-gateway)",
+    "input_token_count": "0",
+    "output_token_count": "0",
+    "request_time": "2026-08-28T11:38:49.736Z",
+    "requester": "scott.johnson@databricks.com",
+    "status_code": "400"
+  },
+  {
+    "endpoint_name": "(codex-gateway)",
+    "input_token_count": "0",
+    "output_token_count": "0",
+    "request_time": "2026-08-28T11:21:13.414Z",
+    "requester": "scott.johnson@databricks.com",
+    "status_code": "400"
+  },
+  {
+    "endpoint_name": "(codex-gateway)",
+    "input_token_count": "0",
+    "output_token_count": "0",
+    "request_time": "2026-08-28T11:21:07.993Z",
+    "requester": "scott.johnson@databricks.com",
+    "status_code": "400"
+  },
+  {
+    "endpoint_name": "(codex-gateway)",
+    "input_token_count": "0",
+    "output_token_count": "0",
+    "request_time": "2026-08-28T11:21:02.594Z",
+    "requester": "scott.johnson@databricks.com",
+    "status_code": "500"
+  },
+  {
+    "endpoint_name": "(codex-gateway)",
+    "input_token_count": "0",
+    "output_token_count": "0",
+    "request_time": "2026-08-28T11:20:48.630Z",
+    "requester": "scott.johnson@databricks.com",
+    "status_code": "500"
+  }
+]

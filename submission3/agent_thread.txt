@@ -1,0 +1,238 @@
+================================================================================
+Build 3 · Unity Gateway — Coding agent + Slack MCP thread
+Evidence #4: agent_thread.txt
+================================================================================
+
+STEP 6 — Onboard coding agent with Unity Gateway (ucode)
+--------------------------------------------------------------------------------
+$ ucode status
+  Workspace URL: 
+https://fe-sandbox-serverless-scottj-techsummit.cloud.databricks.com
+  CLI profile: fe-tech
+
+Coding Agents
+  Coding Agent: Codex
+  Configured: yes
+  Base URL: 
+https://fe-sandbox-serverless-scottj-techsummit.cloud.databricks.com/ai-gateway/
+codex/v1
+  MCP list command: codex mcp list
+  MCP servers: system-ai-slack
+  Config file: /Users/scott.johnson/.codex/ucode.config.toml
+
+  Coding Agent: Claude Code
+--
+  Base URL: not configured
+  Config file: /Users/scott.johnson/.claude/ucode-settings.json
+
+--
+
+ucode config (Codex → Databricks AI Gateway):
+model_provider = "ucode-databricks"
+model = "system.ai.gpt-5-6-luna"
+model_reasoning_effort = "medium"
+[model_providers.ucode-databricks]
+name = "Databricks AI Gateway"
+base_url = "https://fe-sandbox-serverless-scottj-techsummit.cloud.databricks.com/ai-gateway/codex/v1"
+wire_api = "responses"
+[model_providers.ucode-databricks.http_headers]
+User-Agent = "ucode/0.1.0+39.g2a48457 codex/0.150.1"
+[model_providers.ucode-databricks.auth]
+command = "/Users/scott.johnson/.local/bin/ucode"
+args = ["auth-token", "--host", "https://fe-sandbox-serverless-scottj-techsummit.cloud.databricks.com", "--profile", "fe-tech"]
+timeout_ms = 5000
+refresh_interval_ms = 900000
+[projects."/Users/scott.johnson/Downloads/sentinel-benefits"]
+trust_level = "trusted"
+
+STEP 7 — Onboard Slack MCP with Unity Gateway
+--------------------------------------------------------------------------------
+$ ucode configure mcp --services system.ai.slack   → Saved (Codex)
+$ ucode status | MCP servers: system-ai-slack
+
+STEP 8 — Use Slack MCP (via governed Codex) to search guardrail solution instructions
+--------------------------------------------------------------------------------
+$ codex exec --profile ucode "Use the system-ai-slack MCP ... search ... AI guardrails blocking all-data reads ..."
+
+----- Codex transcript (model: system.ai.gpt-5-6-luna via ai-gateway/codex/v1) -----
+Reading additional input from stdin...
+2026-08-28T11:59:47.731742Z ERROR codex_models_manager::manager: failed to refresh available models: unexpected status 404 Not Found: {"error_code":"ENDPOINT_NOT_FOUND","message":"codex/v1/models is not enabled for this workspace."}, url: https://fe-sandbox-serverless-scottj-techsummit.cloud.databricks.com/ai-gateway/codex/v1/models?client_version=0.150.1, request id: 01b11d9c-16eb-4b49-8532-1450fb3c0b63
+2026-08-28T11:59:47.735284Z ERROR codex_models_manager::manager: failed to refresh available models: unexpected status 404 Not Found: {"error_code":"ENDPOINT_NOT_FOUND","message":"codex/v1/models is not enabled for this workspace."}, url: https://fe-sandbox-serverless-scottj-techsummit.cloud.databricks.com/ai-gateway/codex/v1/models?client_version=0.150.1, request id: f9c0e4ae-2f01-4c2b-8b6a-b682f8abf6a2
+OpenAI Codex v0.150.1
+--------
+workdir: /Users/scott.johnson/Downloads/sentinel-benefits
+model: system.ai.gpt-5-6-luna
+provider: ucode-databricks
+approval: never
+sandbox: workspace-write [workdir, /tmp, $TMPDIR]
+reasoning effort: medium
+reasoning summaries: none
+session id: 01a0483d-8a17-7d60-97b4-4ef1de205af0
+--------
+user
+Use the system-ai-slack MCP tools to search our Slack workspace for any messages or instructions about the solution for AI guardrails — specifically how to block an agent from querying or reading ALL data (all-data reads, 'query all data', dumping an entire table, SELECT * with no filter). List the MCP tools you used, summarize what you find, and cite channel names / message snippets. If nothing relevant is found, say so explicitly.
+warning: Model metadata for `system.ai.gpt-5-6-luna` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.
+warning: Skill descriptions were shortened to fit the skills context budget. Codex can still see every skill, but some descriptions are shorter. Disable unused skills or plugins to leave more room for the rest.
+**Exploring MCP tools**
+
+I realize I need to use the MCP tools, and it seems like I'll also need to inspect various resources. There's a chance that skill is necessary too. I noticed that "system-ai-slack" isn't listed explicitly, but it seems to be part of MCP. I should make a list of the resources and templates that might be useful for this task. Keeping everything organized should help me navigate the process more smoothly!
+codex
+I’ll inspect the available Slack MCP resources, then search for guardrail guidance and verify the relevant message context.
+mcp: codex/list_mcp_resources started
+mcp: codex/list_mcp_resources (completed)
+**Planning search strategy**
+
+I need to think through my search options and decide between public or private sources. I want to use specific query terms, and it looks like I can search for up to 20 results. Maybe I should make multiple calls in parallel to get a broader range of data. Let’s work on organizing this effectively so I can retrieve the most relevant information for the user!
+codex
+No pre-indexed resources are available, so I’m searching Slack directly with several focused guardrail queries.
+mcp: system-ai-slack/slack_search_public_and_private started
+mcp: system-ai-slack/slack_search_public_and_private started
+mcp: system-ai-slack/slack_search_public_and_private started
+mcp: system-ai-slack/slack_search_public_and_private started
+mcp: system-ai-slack/slack_search_public_and_private (completed)
+mcp: system-ai-slack/slack_search_public_and_private (completed)
+mcp: system-ai-slack/slack_search_public_and_private (completed)
+mcp: system-ai-slack/slack_search_public_and_private (completed)
+codex
+A strong match surfaced in `#streamline-telco-hackathon`; I’m narrowing the search to the exact policy language and fetching its thread for the concrete implementation details.
+mcp: system-ai-slack/slack_search_public_and_private started
+mcp: system-ai-slack/slack_search_public_and_private started
+mcp: system-ai-slack/slack_search_public_and_private started
+mcp: system-ai-slack/slack_search_public_and_private started
+mcp: system-ai-slack/slack_search_public_and_private (completed)
+mcp: system-ai-slack/slack_search_public_and_private (completed)
+mcp: system-ai-slack/slack_search_public_and_private (completed)
+mcp: system-ai-slack/slack_search_public_and_private (completed)
+codex
+The search found two concrete solution threads: a SQL custom guardrail and a gateway rate-limit approach. I’m reading both threads now to distinguish instructions from status/feedback and capture exact snippets.
+mcp: system-ai-slack/slack_read_thread started
+mcp: system-ai-slack/slack_read_thread started
+mcp: system-ai-slack/slack_read_thread started
+mcp: system-ai-slack/slack_read_thread (completed)
+mcp: system-ai-slack/slack_read_thread (completed)
+mcp: system-ai-slack/slack_read_thread (completed)
+**Organizing Slack tools and citations**
+
+I need to prepare a final summary that includes a list of tools used and citations. The user asked for channel names and message snippets that can be provided with channel names, timestamps, and raw URLs if necessary. It’s essential to note the search scope limitations since we searched all channels, including private ones. 
+
+I should clarify the nuances of the SQL function and mention the specific tools like list_mcp_resources, slack_search_public_and_private, and slack_read_thread. I also want to ensure I'm not claiming an authoritative solution but rather sharing Slack's instructions/status.
+**Citing message snippets and links**
+
+I need to prepare citations that include message snippets along with timestamps and permalinks. It looks like I can provide links in a raw format since the system states that URLs must not be written directly for web citations, but internal MCP tools should be fine. 
+
+Using Slack permalinks in markdown is a possibility. I’ll include channel names, message timestamps, and permalinks to ensure clarity while being concise in my formulation. This approach will help satisfy the user’s request effectively.
+codex
+**MCP Tools Used**
+- `list_mcp_resources`
+- `mcp__system_ai_slack.slack_search_public_and_private`
+- `mcp__system_ai_slack.slack_read_thread`
+
+**Findings**
+
+Relevant guidance was found in two Slack threads:
+
+- **`#fins-ai-challenge-team-cool` — August 27, 2026**
+  - Kateryna Savchyn provided a Unity Catalog SQL custom guardrail function:
+    - `reyden_whisperers_catalog.meridian_ai_gateway.guard_block_all_data(...)`
+    - Returns `STRUCT<result STRING, reason STRING>`.
+    - Uses case-insensitive matching for phrases such as `"all customers"`, `"every account"`, `"entire dataset"`, `"read everything"`, `"unfiltered"`, `"no filter"`, `"select *"`, and `"list all customers"`.
+    - Deny response: `"Blocked: request attempts to read all/unfiltered Lakebase data"`.
+  - A refined version uses `RLIKE` against the event payload and includes patterns for:
+    - all data/customers/accounts/records/rows/balances
+    - entire dataset/table/database
+    - whole table/dataset
+    - `read everything`
+    - `unfiltered`, `no filter`
+    - `select *`
+    - `dump all` / `dump the`
+    - `list all customers`
+  - The same thread explicitly instructs running one blocking and one passing `SELECT` test and confirming the exact return shape expected by the AI Gateway custom-guardrail policy.
+  - Representative snippets:
+    - `"Use as an AI Gateway custom guardrail... patterns like 'all customers' ... 'select *' ... Use a case-insensitive RLIKE."`
+    - `RETURNS STRUCT<result STRING, reason STRING>`
+    - `THEN NAMED_STRUCT('result', 'deny', 'reason', 'Blocked: request attempts to read all/unfiltered Lakebase data')`
+  - Thread: [Slack thread](https://databricks.enterprise.slack.com/archives/C0BT6DQMJAE/p1787868159121629?thread_ts=1787849345.301679&cid=C0BT6DQMJAE)
+
+- **`#streamline-telco-hackathon` — August 27, 2026**
+  - Omri Sokol described a gateway-enforced alternative/defense-in-depth approach:
+    - Route the coding agent through a Unity AI Gateway endpoint.
+    - Apply a **128K TPM per-user rate limit**, which produces a `429` and stops a runaway “read all Lakebase data” request.
+    - Use a `$0.05` budget block as a second line of defense.
+    - Capture the result in the inference table, including the `429` on the all-data read.
+  - Representative snippet:
+    - `"The 'read all Lakebase data' runaway is stopped by the 128K-TPM per-user rate limit (429); $0.05 budget block is the second line."`
+  - The follow-up feedback in the same channel says the implementation still needed a committed test proving that the guardrail blocks a runaway all-data read, and evidence that the governed Slack MCP was configured and routed through the gateway.
+  - Threads:
+    - [Gateway/rate-limit message](https://databricks.enterprise.slack.com/archives/C0BSYR6M7LK/p1787843667640039)
+    - [Feedback message](https://databricks.enterprise.slack.com/archives/C0BSYR6M7LK/p1787851541230389)
+
+**Bottom line**
+
+The clearest proposed solution is:
+
+1. Put the agent behind an AI Gateway custom guardrail.
+2. Inspect the request/event payload with a case-insensitive `RLIKE`.
+3. Deny all-data patterns, including `SELECT *`, unfiltered reads, “dump the entire table,” and equivalent natural-language requests.
+4. Return the gateway-compatible `STRUCT<result, reason>` decision.
+5. Add a per-user TPM rate limit and budget cap as defense in depth.
+6. Validate with both a blocked test and an allowed filtered-read test, and record gateway-side enforcement in the inference table.
+
+Slack also indicates that, as of the August 27 feedback, the committed proof of the blocked all-data test and governed Slack MCP routing was still missing; the guidance existed, but the end-to-end evidence was not yet complete.
+tokens used
+91,934
+**MCP Tools Used**
+- `list_mcp_resources`
+- `mcp__system_ai_slack.slack_search_public_and_private`
+- `mcp__system_ai_slack.slack_read_thread`
+
+**Findings**
+
+Relevant guidance was found in two Slack threads:
+
+- **`#fins-ai-challenge-team-cool` — August 27, 2026**
+  - Kateryna Savchyn provided a Unity Catalog SQL custom guardrail function:
+    - `reyden_whisperers_catalog.meridian_ai_gateway.guard_block_all_data(...)`
+    - Returns `STRUCT<result STRING, reason STRING>`.
+    - Uses case-insensitive matching for phrases such as `"all customers"`, `"every account"`, `"entire dataset"`, `"read everything"`, `"unfiltered"`, `"no filter"`, `"select *"`, and `"list all customers"`.
+    - Deny response: `"Blocked: request attempts to read all/unfiltered Lakebase data"`.
+  - A refined version uses `RLIKE` against the event payload and includes patterns for:
+    - all data/customers/accounts/records/rows/balances
+    - entire dataset/table/database
+    - whole table/dataset
+    - `read everything`
+    - `unfiltered`, `no filter`
+    - `select *`
+    - `dump all` / `dump the`
+    - `list all customers`
+  - The same thread explicitly instructs running one blocking and one passing `SELECT` test and confirming the exact return shape expected by the AI Gateway custom-guardrail policy.
+  - Representative snippets:
+    - `"Use as an AI Gateway custom guardrail... patterns like 'all customers' ... 'select *' ... Use a case-insensitive RLIKE."`
+    - `RETURNS STRUCT<result STRING, reason STRING>`
+    - `THEN NAMED_STRUCT('result', 'deny', 'reason', 'Blocked: request attempts to read all/unfiltered Lakebase data')`
+  - Thread: [Slack thread](https://databricks.enterprise.slack.com/archives/C0BT6DQMJAE/p1787868159121629?thread_ts=1787849345.301679&cid=C0BT6DQMJAE)
+
+- **`#streamline-telco-hackathon` — August 27, 2026**
+  - Omri Sokol described a gateway-enforced alternative/defense-in-depth approach:
+    - Route the coding agent through a Unity AI Gateway endpoint.
+    - Apply a **128K TPM per-user rate limit**, which produces a `429` and stops a runaway “read all Lakebase data” request.
+    - Use a `$0.05` budget block as a second line of defense.
+    - Capture the result in the inference table, including the `429` on the all-data read.
+  - Representative snippet:
+    - `"The 'read all Lakebase data' runaway is stopped by the 128K-TPM per-user rate limit (429); $0.05 budget block is the second line."`
+  - The follow-up feedback in the same channel says the implementation still needed a committed test proving that the guardrail blocks a runaway all-data read, and evidence that the governed Slack MCP was configured and routed through the gateway.
+  - Threads:
+    - [Gateway/rate-limit message](https://databricks.enterprise.slack.com/archives/C0BSYR6M7LK/p1787843667640039)
+    - [Feedback message](https://databricks.enterprise.slack.com/archives/C0BSYR6M7LK/p1787851541230389)
+
+**Bottom line**
+
+The clearest proposed solution is:
+
+1. Put the agent behind an AI Gateway custom guardrail.
+2. Inspect the request/event payload with a case-insensitive `RLIKE`.
+3. Deny all-data patterns, including `SELECT *`, unfiltered reads, “dump the entire table,” and equivalent natural-language requests.
+4. Return the gateway-compatible `STRUCT<result, reason>` decision.
+5. Add a per-user TPM rate limit and budget cap as defense in depth.
+6. Validate with both a blocked test and an allowed filtered-read test, and record gateway-side enforcement in the inference table.
+
+Slack also indicates that, as of the August 27 feedback, the committed proof of the blocked all-data test and governed Slack MCP routing was still missing; the guidance existed, but the end-to-end evidence was not yet complete.
