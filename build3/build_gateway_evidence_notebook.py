@@ -183,11 +183,40 @@ code(
 )
 md(
     "### Confirming the guardrail was enforced by the GATEWAY, not the app\n"
-    "Structural proof: a **blocked** row's response carries the gateway's "
-    "`input_guardrail` verdict and **no model completion** (`choices`) — the model "
-    "never ran because the gateway intercepted the request. An **allowed** row is "
-    "the opposite: a model completion and no guardrail verdict. This asymmetry can "
-    "only occur if the gateway (not the app) enforced the block *before* the model."
+    "**(a) The records live in the endpoint's AI Gateway auto-capture inference "
+    "table.** The endpoint's `ai_gateway.inference_table_config` names exactly this "
+    "table — the *gateway* writes it automatically; the app cannot. So a "
+    "guardrail-block record in this table is gateway-produced by construction. "
+    "(The app's own guardrail writes to a different table, `app.guardrail_blocks` "
+    "in Lakebase.)"
+)
+code(
+    "cfg = w.serving_endpoints.get(name=" + repr(ENDPOINT) + ").ai_gateway.inference_table_config.as_dict()\n"
+    "print('endpoint inference_table_config:', json.dumps(cfg))\n"
+    "print('=> inference table:', cfg['catalog_name']+'.'+cfg['schema_name']+'.'+cfg['table_name_prefix']+'_payload')\n"
+    f"print('=> querying THAT table:', {INFER_TABLE!r})\n"
+    "cfg"
+)
+md(
+    "**(b) Raw NATIVE inference-table records** for guardrail blocks — the actual "
+    "auto-capture columns (`databricks_request_id`, `status_code`, `served_entity_id`, "
+    "`request`, `response`), untransformed. `served_entity_id` is empty because the "
+    "gateway rejected the request BEFORE routing to any served model — i.e. the "
+    "model never ran; the gateway enforced it."
+)
+code(
+    f"q(\"\"\"SELECT databricks_request_id, request_time, status_code, served_entity_id,\n"
+    "       substr(request,1,90) AS request,\n"
+    "       substr(response,1,150) AS response\n"
+    f"FROM {INFER_TABLE}\n"
+    "WHERE status_code=400 AND response LIKE '%input_guardrail_triggered%'\n"
+    "ORDER BY request_time DESC LIMIT 8\"\"\")"
+)
+md(
+    "**(c)** Blocked vs allowed asymmetry across the same table — a blocked record "
+    "has the gateway `input_guardrail` verdict and **no model completion** "
+    "(`choices`); allowed records have a completion and no verdict. Only possible "
+    "if the gateway enforced the block before the model:"
 )
 code(
     "q(\"\"\"SELECT\n"
