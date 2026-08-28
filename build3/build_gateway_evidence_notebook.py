@@ -151,8 +151,10 @@ md(
 )
 code(
     f"q(\"\"\"SELECT request_time, status_code,\n"
-    f"       substr(request,1,160) AS request_snippet,\n"
-    f"       CASE WHEN response LIKE '%input_guardrail_triggered%' THEN 'GATEWAY_GUARDRAIL_BLOCKED' ELSE 'other' END AS outcome\n"
+    f"       substr(request,1,140) AS request_snippet,\n"
+    "       CASE WHEN response LIKE '%\\\"privacy\\\":true%' THEN 'privacy' ELSE 'safety' END AS flagged_category,\n"
+    "       CASE WHEN response LIKE '%input_guardrail_triggered%' THEN 'input_guardrail_triggered' END AS finish_reason,\n"
+    "       'GATEWAY (app never saw the request)' AS enforced_by\n"
     f"FROM {INFER_TABLE}\n"
     f"WHERE status_code=400 AND response LIKE '%input_guardrail_triggered%'\n"
     f"ORDER BY request_time DESC LIMIT 10\"\"\")"
