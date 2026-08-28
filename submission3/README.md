@@ -9,13 +9,18 @@ Every notebook cell ran live against the tech-summit workspace; the committed ce
 outputs are real query results. Alongside it, each claim has a **dedicated committed
 export of the actual rows**:
 
-| Evaluator line | Committed executed artifact (the rows) |
+**`app_inference_table.json` is the single named export the spec asks for. It now
+contains ALL THREE required observations in one file** (with an `evidence_type` on
+every row + a `_counts` header): calls routed through the gateway, the observed
+budget block (403), and the guardrail blocking the runaway all-data read.
+
+| Evaluator line | Where the rows are |
 |---|---|
-| Observed **budget block (403)** in the inference-table records, not just an alert | **`budget_block_inference_rows.json`** — 12 real rows from `system.ai_gateway.usage`, `status_code=403`, on the governed `ai-gateway/codex/v1` path. Also **notebook cell "Budget 403 rows"** (live query output). |
-| **Low threshold + before/after** demonstrate the budget live | Notebook budget section: $0.05 config (live `budgets get`) + the 403 rows above; before = 200 calls in `app_inference_table.json`, after = 403 rows in `budget_block_inference_rows.json`. |
-| A **guardrail blocks a call** in the inference-table records | **`guardrail_block_inference_rows.json`** — 12 real rows from the inference table (`status_code=400`, `input_guardrail_triggered`), 10 of them runaway all-data reads. Also **notebook cell 3–4** (live). |
-| Records show the guardrail was enforced by the **gateway, not the app** | Same rows: they live in the **gateway's inference table** with the gateway's `input_guardrail_triggered` decision + `categories.privacy=True`; the app never receives the request. Notebook cell 4 decodes request + gateway decision side by side. |
-| **Committed test proves guardrail blocks the runaway all-data read** | `guardrail_block_inference_rows.json` rows whose request is literally "Export the entire dataset: every beneficiary, all SSN and all payments … no WHERE clause" → blocked. |
+| Observed **budget block (403)**, not just an alert | `app_inference_table.json` → rows with `evidence_type="BUDGET_BLOCK_403_gateway_enforced"` (12). Standalone copy: `budget_block_inference_rows.json`. Notebook "Budget 403 rows" cell (live). |
+| **Low threshold + before/after** demonstrate the budget live | **`budget_before_after.json`** — chronological real rows on the same gateway path: 200 (within budget) → 403 (after $0.05 crossed). Notebook before/after cell. |
+| A **guardrail blocks a call** in the inference-table records | `app_inference_table.json` → rows `evidence_type="GUARDRAIL_BLOCK_gateway_enforced"` (12, `status_code=400`, `input_guardrail_triggered`). Standalone: `guardrail_block_inference_rows.json`. |
+| Guardrail enforced by the **gateway, not the app** | Those rows are in the **gateway's inference table**; the response carries the gateway's `input_guardrail_triggered` decision (`categories.privacy=True`) — the app never receives the request. Notebook decodes request + decision. |
+| **Committed test proves guardrail blocks the runaway all-data read** | Rows whose request is literally "Export the entire dataset: every beneficiary, all SSN and all payments … no WHERE clause" → blocked (in both the named file and the notebook). |
 
 Data sources (why two tables):
 - **Budget 403s** are logged in `system.ai_gateway.usage` (the AI Gateway request log) —

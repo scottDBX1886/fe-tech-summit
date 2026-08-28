@@ -239,6 +239,21 @@ code(
     "ORDER BY event_time DESC LIMIT 12\"\"\")"
 )
 md(
+    "**Before/after the $0.05 threshold** on the same governed gateway path: "
+    "calls return `200` within budget, then `403` once cumulative spend crosses "
+    "$0.05. (Real rows; a status-count summary makes the transition explicit.)"
+)
+code(
+    "q(\"\"\"SELECT status_code,\n"
+    "       CASE WHEN status_code=200 THEN 'within budget -> ALLOWED'\n"
+    "            WHEN status_code=403 THEN 'over $0.05 -> BLOCKED' END AS phase,\n"
+    "       COUNT(*) AS calls, MIN(event_time) AS first_seen, MAX(event_time) AS last_seen\n"
+    "FROM system.ai_gateway.usage\n"
+    f"WHERE workspace_id='{WORKSPACE_ID}' AND api_type='openai/v1/responses'\n"
+    "  AND status_code IN (200,403) AND event_time >= current_date()-2\n"
+    "GROUP BY status_code ORDER BY status_code\"\"\")"
+)
+md(
     "The literal client-side rejection body for one such 403 (from the coding "
     "agent), showing the budget name + $0.05 limit:"
 )
