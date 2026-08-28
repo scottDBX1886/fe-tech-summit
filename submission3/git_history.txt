@@ -1,0 +1,64 @@
+07a1d13 Build 3: prove gateway guardrail enforcement IN the inference-table records
+313f485 Build 3: confirm gateway (not app) guardrail enforcement with running proof
+adf1e03 Build 3: restore rich response_snippet on all block rows (fixes budget regression)
+f26e05f Build 3: flatten guardrail rows w/ top-level block signal; drop prose evidence
+cbf5022 Build 3: un-truncate guardrail rows so gateway-enforcement proof is committed
+659eb7f Build 3: consolidate all 3 observations into named app_inference_table.json
+02319ec Build 3: commit executed row exports for budget 403 + guardrail blocks
+98de5e3 Build 3 · Unity Gateway: govern app + coding agent + MCP
+21a23a2 Fix deploy: drop non-settable iam.* scopes from app payload
+f393165 Fix deploy: set OBO scopes alongside resource in app create/update payload
+c71b500 Harden grant script: guard per-object ownership transfer
+db0f91d Fix MLflow trace-export auth conflict + cache-table ownership
+392e513 Build 2 evidence: refresh git history + zip with executed retrieval notebook
+fc1da38 Build 2 evidence: executed notebook proving Lakebase Search retrieval RAN
+b3f6e31 Build 2 evidence: add lakebase_search_evidence.json + refresh git history/zip
+323f8ab Fix dashboard embed + add Lakebase Search evidence asset
+cc8f55d Build 2 evidence: refresh submission2 with Lakebase Search retrieval
+c628618 Layer 2 (Assist): retrieve memo grounding from the Build-1 Lakebase Search index
+88f3fa0 Build 2 evidence: submission2 bundle (all 7 required exports)
+acfca3f Layer 0 (scaffold): bind sql-warehouse resource at app-create time
+f5942aa Layer 0 (scaffold): stop shipping local .env to the Apps container
+c7d9264 Layer 0 (scaffold): mark deploy/setup scripts executable
+db06185 Layer 0 (scaffold): container build no-op + Autoscale Lakebase env in app.yaml
+6330609 Layer 0 (scaffold): make container build a no-op (ship prebuilt dist/)
+66186e1 Layer 0 (scaffold): fix container npm install — drop proxy registry override
+cdf63df Layer 0 (scaffold): add client build deps so the production build passes
+78b5db6 Layer 3 (Act): implement execute_case_action write-back with approval + audit
+6656ea3 Layer 2 (Assist): implement find_flag + rank_dispositions + agent instructions
+2b1a9fd Layer 1 (Visualize): live flagged-payment queue over real Gold data
+ab31db4 Layer 0 (scaffold): reconstruct package.json + lockfile so the app builds
+
+=== full log (Build 3 commits) ===
+07a1d13a4547f59bebd3422f5a31fb30ee31c87b
+  scottDBX1886 <scott.johnson@databricks.com>  Fri Aug 28 09:48:23 2026 -0400
+  Build 3: prove gateway guardrail enforcement IN the inference-table records
+
+313f4850fdc698d84a882085cb3c075421becbd7
+  scottDBX1886 <scott.johnson@databricks.com>  Fri Aug 28 09:44:19 2026 -0400
+  Build 3: confirm gateway (not app) guardrail enforcement with running proof
+
+adf1e032476cef5824bd8893ec8346b58a4b140c
+  scottDBX1886 <scott.johnson@databricks.com>  Fri Aug 28 09:38:03 2026 -0400
+  Build 3: restore rich response_snippet on all block rows (fixes budget regression)
+
+f26e05fc701c2767b4b351a14c7f41e408318a8c
+  scottDBX1886 <scott.johnson@databricks.com>  Fri Aug 28 09:26:06 2026 -0400
+  Build 3: flatten guardrail rows w/ top-level block signal; drop prose evidence
+
+cbf50224e67852037813b9d906207b5821d229e8
+  scottDBX1886 <scott.johnson@databricks.com>  Fri Aug 28 09:17:11 2026 -0400
+  Build 3: un-truncate guardrail rows so gateway-enforcement proof is committed
+
+659eb7f47145e42c586fccf5101b5d3b7351d0ff
+  scottDBX1886 <scott.johnson@databricks.com>  Fri Aug 28 08:51:56 2026 -0400
+  Build 3: consolidate all 3 observations into named app_inference_table.json
+
+02319ec0b769af9439fd2f138b753dcf17c62f89
+  scottDBX1886 <scott.johnson@databricks.com>  Fri Aug 28 08:36:11 2026 -0400
+  Build 3: commit executed row exports for budget 403 + guardrail blocks
+
+98de5e3cb2ad8de4033b772f6e70c5c2bcd1eb54
+  scottDBX1886 <scott.johnson@databricks.com>  Fri Aug 28 08:23:19 2026 -0400
+  Build 3 · Unity Gateway: govern app + coding agent + MCP
+

@@ -121,7 +121,7 @@ def build_problem():
 # SLIDE 8 — BUSINESS VALUE (pure $ impact, per feedback)
 # ============================================================================
 def build_business_value():
-    old = "obj_42bdb83a4b5c"
+    old = "obj_6aa9eccf0634"
     idx = gb.get_slide_ids(PRES_ID).index(old)
     gb.delete_slide(PRES_ID, old)
     page = new_blank(idx)
@@ -182,10 +182,43 @@ def build_lakebase():
     print("lakebase slide built:", page)
 
 
+# ============================================================================
+# SLIDE 13 — WHY DATABRICKS: THE 4 C's (icon cards)
+# ============================================================================
+def build_fourcs():
+    # Insert just before the Lakebase slide (4Cs → Lakebase reads well together).
+    lakebase = "obj_e0ed02c0eaa3"
+    idx = gb.get_slide_ids(PRES_ID).index(lakebase)
+    page = new_blank(idx)
+
+    title_block(page, "Why Databricks", kicker="One platform: Context · Control · Cost · Choice")
+
+    cards = [
+        ("Context", "Genie reasons over the governed lakehouse to explain why a payment is flagged. Intelligence isn't the limit — context is."),
+        ("Control", "Unity Catalog governs data and AI under one control plane, with a human approval before any funds move."),
+        ("Cost", "Unity AI Gateway caps, logs, and attributes every AI call — spend is bounded and traceable per case."),
+        ("Choice", "Open platform: any model, any cloud, no lock-in. Swap models without rebuilding the solution."),
+    ]
+    cw, gap, y, ch = 2.78, 0.24, 2.55, 3.6
+    x0 = (SLIDE_W - (4 * cw + 3 * gap)) / 2
+    for i, (head, body) in enumerate(cards):
+        x = x0 + i * (cw + gap)
+        card(page, x, y, cw, ch, fill="light_gray")
+        # Big letter chip
+        chip = gb.create_shape(PRES_ID, page, "ROUND_RECTANGLE", x + cw / 2 - 0.45, y + 0.35, 0.9, 0.9)["shapeId"]
+        gb.update_shape_properties(PRES_ID, chip, fill_color=hex_rgb("red"))
+        batch([{"updateShapeProperties": {"objectId": chip, "shapeProperties": {"outline": {"propertyState": "NOT_RENDERED"}}, "fields": "outline"}}])
+        letter = gb.create_text_box(PRES_ID, page, str(i + 1), x + cw / 2 - 0.45, y + 0.44, 0.9, 0.72, font_size=34, bold=True, font_color=hex_rgb("white"))["textBoxId"]
+        batch([align_center(letter)])
+        styled_text(page, [(head, 18, True, "dark_teal")], x, y + 1.45, cw, 0.4)
+        gb.create_text_box(PRES_ID, page, body, x + 0.3, y + 2.0, cw - 0.6, ch - 2.2, font_size=12.5, font_color=hex_rgb("muted_teal"))
+    print("4Cs slide rebuilt:", page)
+
+
 if __name__ == "__main__":
     import argparse
     p = argparse.ArgumentParser()
-    p.add_argument("target", choices=["problem", "value", "lakebase", "all"])
+    p.add_argument("target", choices=["problem", "value", "lakebase", "fourcs", "all"])
     args = p.parse_args()
     if args.target in ("problem", "all"):
         build_problem()
@@ -193,3 +226,5 @@ if __name__ == "__main__":
         build_business_value()
     if args.target in ("lakebase", "all"):
         build_lakebase()
+    if args.target in ("fourcs", "all"):
+        build_fourcs()

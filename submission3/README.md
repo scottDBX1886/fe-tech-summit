@@ -4,6 +4,32 @@ Governing the AI: the Sentinel Payment Integrity app's LLM, a coding agent (Code
 and the Slack MCP are all routed through a governed Unity AI Gateway with an inference
 table, guardrails, and a $0.05 budget block.
 
+## Architecture note — guardrail enforcement point (read this)
+The governed endpoint `sentinel-unity-gateway` is an **external-model endpoint**
+(the only endpoint type that lets the app's OpenAI Agents SDK route its LLM through a
+self-owned governed gateway with an inference table). Databricks AI Gateway supports
+**only `safety` + `pii` guardrails on this endpoint type** — `invalid_keywords` /
+`valid_topics` / custom UC-function guardrails are silently dropped (verified against
+the live API). Consequences for the "all-data read" control:
+
+- **Gateway guardrail (enforced by the gateway, in the inference table):** the AI
+  Gateway `safety`/`pii` guardrail blocks the runaway all-data prompt — it flags the
+  bulk-exfiltration request (`categories.privacy=true`), returns
+  `finishReason=input_guardrail_triggered`, and the **model never runs** (no `choices`,
+  no completion tokens). These are real records in the endpoint's auto-capture
+  inference table `serverless_scottj_techsummit_catalog.unity_gateway.sentinel_app_payload`
+  (which the gateway writes and the app cannot) — see `gateway_evidence.ipynb` and
+  `guardrail_block_inference_rows.json`.
+- **All-data query-shape control (enforced by the app):** a dedicated all-data-read
+  guardrail (`app/server/agent/guardrail.ts`) inspects the actual query intent before
+  any SQL runs, logging to `app.guardrail_blocks`. This is the literal "prevent all
+  Lakebase data from being read" control, but by definition it is enforced **by the app**,
+  not the gateway.
+
+A gateway-native *all-data content* guardrail is not expressible on an external-model
+endpoint on this platform; the gateway safety guardrail (above) is the gateway-enforced
+block we can capture in the inference-table records.
+
 ## ▶ Primary evidence: `gateway_evidence.ipynb` (EXECUTED, real outputs) + dedicated row exports
 Every notebook cell ran live against the tech-summit workspace; the committed cell
 outputs are real query results. Alongside it, each claim has a **dedicated committed
