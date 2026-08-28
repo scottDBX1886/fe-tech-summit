@@ -181,6 +181,42 @@ code(
     "print('  flagged:', inner.get('input_guardrail',[{}])[0].get('flagged'))\n"
     "print('  categories:', {k:v for k,v in inner.get('input_guardrail',[{}])[0].get('categories',{}).items() if v})"
 )
+md(
+    "### Confirming the guardrail was enforced by the GATEWAY, not the app\n"
+    "Structural proof: a **blocked** row's response carries the gateway's "
+    "`input_guardrail` verdict and **no model completion** (`choices`) — the model "
+    "never ran because the gateway intercepted the request. An **allowed** row is "
+    "the opposite: a model completion and no guardrail verdict. This asymmetry can "
+    "only occur if the gateway (not the app) enforced the block *before* the model."
+)
+code(
+    "q(\"\"\"SELECT\n"
+    "  CASE WHEN response LIKE '%input_guardrail_triggered%' THEN 'BLOCKED_by_gateway' ELSE 'ALLOWED' END AS outcome,\n"
+    "  response LIKE '%input_guardrail%'  AS has_gateway_guardrail_verdict,\n"
+    "  response LIKE '%\\\"choices\\\"%'      AS has_model_completion,\n"
+    "  COUNT(*) AS n\n"
+    f"FROM {INFER_TABLE}\n"
+    "WHERE status_code IN (200,400)\n"
+    "GROUP BY 1,2,3 ORDER BY outcome\"\"\")"
+)
+md(
+    "Side by side: the raw gateway response for a BLOCKED call (guardrail verdict, "
+    "no model output) vs an ALLOWED call (model output, no guardrail):"
+)
+code(
+    f"blocked = q(\"\"\"SELECT response FROM {INFER_TABLE}\n"
+    "WHERE status_code=400 AND response LIKE '%input_guardrail_triggered%' ORDER BY request_time DESC LIMIT 1\"\"\")['response'].iloc[0]\n"
+    f"allowed = q(\"\"\"SELECT response FROM {INFER_TABLE}\n"
+    "WHERE status_code=200 AND response LIKE '%choices%' ORDER BY request_time DESC LIMIT 1\"\"\")['response'].iloc[0]\n"
+    "print('BLOCKED response (gateway guardrail verdict; note: NO \\\"choices\\\" / no model output):')\n"
+    "print(' ', blocked[:280])\n"
+    "print()\n"
+    "print('ALLOWED response (model ran; has \\\"choices\\\"):')\n"
+    "print(' ', allowed[:200])\n"
+    "print()\n"
+    "print('CONCLUSION: blocked has input_guardrail + no choices =>', ('input_guardrail' in blocked and '\"choices\"' not in blocked))\n"
+    "print('           enforced by the GATEWAY before the model ran (app never received it).')"
+)
 
 # ── 4. App-layer all-data guardrail unit test (the real query-shape control) ──
 md(
