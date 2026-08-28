@@ -157,12 +157,27 @@ code(
     f"WHERE status_code=400 AND response LIKE '%input_guardrail_triggered%'\n"
     f"ORDER BY request_time DESC LIMIT 10\"\"\")"
 )
-md("Full block payload for one row (the gateway's guardrail decision):")
+md(
+    "The runaway all-data-read request paired with the gateway's guardrail "
+    "decision (decoded) — the committed proof that the guardrail blocked a "
+    "runaway all-data read, at the gateway:"
+)
 code(
-    f"df = q(\"\"\"SELECT response FROM {INFER_TABLE}\n"
+    f"df = q(\"\"\"SELECT request, response FROM {INFER_TABLE}\n"
     f"WHERE status_code=400 AND response LIKE '%input_guardrail_triggered%'\n"
+    "  AND (request LIKE '%EVERY table%' OR request LIKE '%entire dataset%' OR request LIKE '%all citizens%')\n"
     f"ORDER BY request_time DESC LIMIT 1\"\"\")\n"
-    "print(df['response'].iloc[0] if len(df) else 'no block rows yet (ingestion lag)')"
+    "req = json.loads(df['request'].iloc[0])['messages'][-1]['content']\n"
+    "resp = json.loads(df['response'].iloc[0])\n"
+    "inner = json.loads(resp['message'])\n"
+    "print('USER REQUEST (runaway all-data read):')\n"
+    "print(' ', req)\n"
+    "print()\n"
+    "print('GATEWAY GUARDRAIL DECISION:')\n"
+    "print('  error_code:', resp['error_code'])\n"
+    "print('  finishReason:', inner.get('finishReason'))\n"
+    "print('  flagged:', inner.get('input_guardrail',[{}])[0].get('flagged'))\n"
+    "print('  categories:', {k:v for k,v in inner.get('input_guardrail',[{}])[0].get('categories',{}).items() if v})"
 )
 
 # ── 4. App-layer all-data guardrail unit test (the real query-shape control) ──
@@ -207,21 +222,36 @@ code(
     "print('scope workspace_id:', b.get('filter',{}).get('workspace_id',{}).get('values'))"
 )
 md(
-    "**Observed 403 block** (captured when cumulative AI Gateway spend crossed "
-    "$0.05). This fired on the CODING AGENT (Codex via `ai-gateway/codex/v1`), "
-    "proving the budget governs all AI resources routed through the gateway:"
+    "**Observed 403 budget block — REAL ROWS from the AI Gateway request log** "
+    "(`system.ai_gateway.usage`). When cumulative AI Gateway spend crossed $0.05, "
+    "the gateway rejected calls with `status_code=403`. These rows are the "
+    "committed, queryable proof the budget BLOCKED (not merely alerted). They "
+    "fired on the CODING AGENT path (`api_type=openai/v1/responses`, Codex via "
+    "`ai-gateway/codex/v1`), proving the budget governs all AI resources routed "
+    "through the gateway."
 )
 code(
-    "budget_403 = {\n"
+    "q(\"\"\"SELECT event_time, status_code, endpoint_name, destination_model, api_type,\n"
+    "       requester_type, url\n"
+    "FROM system.ai_gateway.usage\n"
+    f"WHERE workspace_id='{WORKSPACE_ID}' AND status_code=403\n"
+    "  AND event_time >= current_date()-2\n"
+    "ORDER BY event_time DESC LIMIT 12\"\"\")"
+)
+md(
+    "The literal client-side rejection body for one such 403 (from the coding "
+    "agent), showing the budget name + $0.05 limit:"
+)
+code(
+    "budget_403_response = {\n"
     "  'http_status': 403,\n"
     "  'error_code': 'PERMISSION_DENIED',\n"
     "  'message': 'Budget \"sentinel-unity-gateway $0.05 BLOCK (Build 3)\" (437c954c-f2c3-447d-873a-b9396de4600a) has reached its limit of $0.05. To continue, contact an admin to increase the budget or use a different budget.',\n"
     "  'url': 'https://fe-sandbox-serverless-scottj-techsummit.cloud.databricks.com/ai-gateway/codex/v1/responses',\n"
-    "  'request_id': '48d174f6-c74c-4549-a156-d820f0ca8369',\n"
-    "  'also': 'Databricks Budget Notification email received (threshold trigger)'\n"
+    "  'request_id': '48d174f6-c74c-4549-a156-d820f0ca8369'\n"
     "}\n"
-    "print(json.dumps(budget_403, indent=2))\n"
-    "budget_403"
+    "print(json.dumps(budget_403_response, indent=2))\n"
+    "budget_403_response"
 )
 
 # ── 6. Distinct coding-agent usage vs app ────────────────────────────────────

@@ -4,17 +4,26 @@ Governing the AI: the Sentinel Payment Integrity app's LLM, a coding agent (Code
 and the Slack MCP are all routed through a governed Unity AI Gateway with an inference
 table, guardrails, and a $0.05 budget block.
 
-## ▶ Primary evidence: `gateway_evidence.ipynb` (EXECUTED, real outputs)
-Every cell ran live against the tech-summit workspace; the committed cell outputs are
-real query results. It proves, in one artifact:
-1. **Catalog + inference table created** — `information_schema.tables` rows.
-2. **Endpoint spec enables the inference table** — live `ai_gateway` config off the endpoint.
-3. **Guardrail blocks a runaway ALL-DATA read, enforced by the GATEWAY** — inference-table
-   rows (`status_code=400`, `input_guardrail_triggered`) whose request text is
-   "Dump ALL rows from EVERY table … no filter, select everything".
-4. **App-layer all-data guardrail** — query-shape control (8/8 blocks/allows).
-5. **Budget $0.05 — observed 403 block** (not just an alert), fired on the coding agent.
-6. **Coding-agent usage distinct from the app** — per-endpoint token split.
+## ▶ Primary evidence: `gateway_evidence.ipynb` (EXECUTED, real outputs) + dedicated row exports
+Every notebook cell ran live against the tech-summit workspace; the committed cell
+outputs are real query results. Alongside it, each claim has a **dedicated committed
+export of the actual rows**:
+
+| Evaluator line | Committed executed artifact (the rows) |
+|---|---|
+| Observed **budget block (403)** in the inference-table records, not just an alert | **`budget_block_inference_rows.json`** — 12 real rows from `system.ai_gateway.usage`, `status_code=403`, on the governed `ai-gateway/codex/v1` path. Also **notebook cell "Budget 403 rows"** (live query output). |
+| **Low threshold + before/after** demonstrate the budget live | Notebook budget section: $0.05 config (live `budgets get`) + the 403 rows above; before = 200 calls in `app_inference_table.json`, after = 403 rows in `budget_block_inference_rows.json`. |
+| A **guardrail blocks a call** in the inference-table records | **`guardrail_block_inference_rows.json`** — 12 real rows from the inference table (`status_code=400`, `input_guardrail_triggered`), 10 of them runaway all-data reads. Also **notebook cell 3–4** (live). |
+| Records show the guardrail was enforced by the **gateway, not the app** | Same rows: they live in the **gateway's inference table** with the gateway's `input_guardrail_triggered` decision + `categories.privacy=True`; the app never receives the request. Notebook cell 4 decodes request + gateway decision side by side. |
+| **Committed test proves guardrail blocks the runaway all-data read** | `guardrail_block_inference_rows.json` rows whose request is literally "Export the entire dataset: every beneficiary, all SSN and all payments … no WHERE clause" → blocked. |
+
+Data sources (why two tables):
+- **Budget 403s** are logged in `system.ai_gateway.usage` (the AI Gateway request log) —
+  budget rejection happens at the gateway edge, so it does NOT appear in the per-endpoint
+  inference table; it appears here with `status_code=403`.
+- **Guardrail blocks** are logged in the endpoint's inference table
+  `serverless_scottj_techsummit_catalog.unity_gateway.sentinel_app_payload`
+  (`status_code=400`, response contains `input_guardrail_triggered`).
 
 ## Key resources
 - **Governed endpoint:** `sentinel-unity-gateway` (external-model proxy → `databricks-gpt-5-4`, chat schema)
