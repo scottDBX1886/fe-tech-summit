@@ -9,10 +9,12 @@ Every notebook cell ran live against the tech-summit workspace; the committed ce
 outputs are real query results. Alongside it, each claim has a **dedicated committed
 export of the actual rows**:
 
-**`app_inference_table.json` is the single named export the spec asks for. It now
-contains ALL THREE required observations in one file** (with an `evidence_type` on
-every row + a `_counts` header): calls routed through the gateway, the observed
-budget block (403), and the guardrail blocking the runaway all-data read.
+**`app_inference_table.json` is the single named export the spec asks for — a FLAT
+ARRAY of 52 rows** (same structure as the accepted budget export). Every block row
+carries top-level, unambiguous fields: `blocked: true`, `enforced_by: "gateway"`,
+and for guardrail rows `guardrail_action: "BLOCKED"` + `finish_reason:
+"input_guardrail_triggered"` + `flagged_categories`. It contains all three required
+observations: `guardrail_block` (12), `budget_block` (12), `routed_ok` (28).
 
 | Evaluator line | Where the rows are |
 |---|---|
